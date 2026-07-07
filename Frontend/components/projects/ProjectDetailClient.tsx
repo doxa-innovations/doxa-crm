@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Archive,
   CalendarDays,
   CheckCircle2,
   Copy,
@@ -91,7 +92,7 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
   const { canWriteProjects } = usePermissions();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [confirmDeleteProject, setConfirmDeleteProject] = useState(false);
+  const [confirmArchiveProject, setConfirmArchiveProject] = useState(false);
   const [copied, setCopied] = useState(false);
   const [tokenCopied, setTokenCopied] = useState(false);
   const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
@@ -192,8 +193,8 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
       void queryClient.invalidateQueries({ queryKey: ["projects", "documents", projectId] });
     },
   });
-  const deleteProject = useMutation({
-    mutationFn: () => api.delete<void>(`/projects/${projectId}`),
+  const archiveProject = useMutation({
+    mutationFn: () => api.post<void>(`/projects/${projectId}/archive`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
       void queryClient.invalidateQueries({ queryKey: ["reports"] });
@@ -300,9 +301,9 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
                   <Edit className="h-4 w-4" aria-hidden="true" />
                   Edit
                 </Button>
-                <Button onClick={() => setConfirmDeleteProject(true)} type="button" variant="destructive">
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  Delete Project
+                <Button onClick={() => setConfirmArchiveProject(true)} type="button" variant="outline">
+                  <Archive className="h-4 w-4" aria-hidden="true" />
+                  Archive Project
                 </Button>
               </>
             ) : null}
@@ -556,13 +557,15 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
             title="Delete milestone"
           />
           <ConfirmDialog
-            confirmLabel="Delete"
-            description="Delete this project from active project lists. This keeps the existing audit trail in the system."
-            isPending={deleteProject.isPending}
-            onConfirm={() => deleteProject.mutate()}
-            onOpenChange={setConfirmDeleteProject}
-            open={confirmDeleteProject}
-            title="Delete project"
+            confirmLabel="Archive"
+            confirmVariant="default"
+            description="Archive this project to hide it from active project lists. Existing milestones, documents, portal history, and audit context stay in the system."
+            iconTone="warning"
+            isPending={archiveProject.isPending}
+            onConfirm={() => archiveProject.mutate()}
+            onOpenChange={setConfirmArchiveProject}
+            open={confirmArchiveProject}
+            title="Archive project"
           />
           <ConfirmDialog
             confirmLabel="Confirm"

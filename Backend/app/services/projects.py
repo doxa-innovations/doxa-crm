@@ -236,10 +236,14 @@ async def update_project(db: AsyncSession, project_id: UUID, project_in: Project
     return await build_project_response(db, project)
 
 
-async def soft_delete_project(db: AsyncSession, project_id: UUID) -> None:
+async def archive_project(db: AsyncSession, project_id: UUID) -> None:
     project = await get_project_model(db, project_id)
     project.is_active = False
     await db.commit()
+
+
+async def soft_delete_project(db: AsyncSession, project_id: UUID) -> None:
+    await archive_project(db, project_id)
 
 
 async def list_milestones(db: AsyncSession, project_id: UUID) -> list[MilestoneResponse]:

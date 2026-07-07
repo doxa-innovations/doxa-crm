@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import enum
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Boolean, Enum as SQLEnum, ForeignKey, String, UniqueConstraint, text
+from sqlalchemy import Boolean, DateTime, Enum as SQLEnum, ForeignKey, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -110,6 +111,8 @@ class Contact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=True,
         server_default=text("true"),
     )
+    sms_opted_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sms_opted_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     account = relationship("Account")
     owner = relationship("User")

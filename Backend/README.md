@@ -124,6 +124,14 @@ Optional integrations:
 ```env
 RESEND_API_KEY=
 RESEND_FROM_EMAIL=crm@example.com
+AFROMESSAGE_API_KEY=
+# Optional AfroMessage Identifier ID used as the API "from" value.
+AFROMESSAGE_IDENTIFIER_ID=
+# Optional verified sender name.
+AFROMESSAGE_SENDER_NAME=
+AFROMESSAGE_BASE_URL=https://api.afromessage.com
+AFROMESSAGE_SEND_PATH=/api/send
+AFROMESSAGE_METHOD=POST
 R2_ENDPOINT_URL=
 R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
@@ -131,7 +139,7 @@ R2_BUCKET_NAME=
 R2_REGION_NAME=auto
 ```
 
-Use Resend for email delivery and R2-compatible storage for project documents when those features need real external services.
+Use Resend for email delivery, AfroMessage for campaign SMS steps, and R2-compatible storage for project documents when those features need real external services.
 
 ## Run Everything With Docker
 

@@ -158,6 +158,8 @@ export interface Contact {
   tags: string[];
   custom_fields: CustomFields;
   is_active: boolean;
+  sms_opted_in_at?: ISODateTime | null;
+  sms_opted_out_at?: ISODateTime | null;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
@@ -172,6 +174,8 @@ export interface ContactCreate {
   owner_id?: UUID | null;
   tags?: string[];
   custom_fields?: CustomFields;
+  sms_opted_in_at?: ISODateTime | null;
+  sms_opted_out_at?: ISODateTime | null;
 }
 
 export interface ContactUpdate {
@@ -185,6 +189,8 @@ export interface ContactUpdate {
   tags?: string[];
   custom_fields?: CustomFields;
   is_active?: boolean;
+  sms_opted_in_at?: ISODateTime | null;
+  sms_opted_out_at?: ISODateTime | null;
 }
 
 export interface ContactTimelineItem {
@@ -548,10 +554,10 @@ export interface TaskSnoozeRequest {
   new_due: ISODateTime;
 }
 
-export type CampaignType = "email" | "event" | "social" | "cold_call";
+export type CampaignType = "email" | "sms" | "event" | "social" | "cold_call";
 export type CampaignStatus = "draft" | "active" | "paused" | "completed";
 export type CampaignEnrollmentStatus = "active" | "completed" | "unsubscribed";
-export type CampaignSequenceChannel = "email" | "call" | "task" | "social";
+export type CampaignSequenceChannel = "email" | "sms" | "call" | "task" | "social";
 export type CampaignMetricEventType = "sent" | "opened" | "clicked" | "replied" | "converted";
 
 export interface CampaignMetrics {

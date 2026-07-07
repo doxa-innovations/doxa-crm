@@ -21,23 +21,30 @@ import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHea
 import { api } from "@/lib/api";
 import type { Account, Contact, ContactCreate, ContactUpdate, User } from "@/types/api";
 
-const contactFormSchema = z.object({
-  account_id: z.string().optional(),
-  custom_fields: z.array(
-    z.object({
-      id: z.string(),
-      key: z.string(),
-      value: z.string(),
-    }),
-  ),
-  email: z.string().email("Enter a valid email address."),
-  first_name: z.string().min(1, "First name is required."),
-  last_name: z.string().min(1, "Last name is required."),
-  owner_id: z.string().optional(),
-  phone: z.string().min(1, "Phone is required."),
-  tags: z.array(z.string()),
-  title: z.string().min(1, "Title is required."),
-});
+const contactFormSchema = z
+  .object({
+    account_id: z.string().optional(),
+    custom_fields: z.array(
+      z.object({
+        id: z.string(),
+        key: z.string(),
+        value: z.string(),
+      }),
+    ),
+    email: z.string().email("Enter a valid email address."),
+    first_name: z.string().min(1, "First name is required."),
+    last_name: z.string().min(1, "Last name is required."),
+    owner_id: z.string().optional(),
+    phone: z.string().min(1, "Phone is required."),
+    sms_opted_in: z.boolean(),
+    sms_opted_out: z.boolean(),
+    tags: z.array(z.string()),
+    title: z.string().min(1, "Title is required."),
+  })
+  .refine((values) => !(values.sms_opted_in && values.sms_opted_out), {
+    message: "Choose SMS opt-in or opt-out.",
+    path: ["sms_opted_out"],
+  });
 
 type ContactFormValues = z.infer<typeof contactFormSchema>;
 
@@ -73,6 +80,8 @@ function emptyValues(): ContactFormValues {
     last_name: "",
     owner_id: "",
     phone: "",
+    sms_opted_in: false,
+    sms_opted_out: false,
     tags: [],
     title: "",
   };
@@ -91,6 +100,8 @@ function valuesFromContact(contact?: Contact | null): ContactFormValues {
     last_name: contact.last_name,
     owner_id: contact.owner_id,
     phone: contact.phone,
+    sms_opted_in: Boolean(contact.sms_opted_in_at && !contact.sms_opted_out_at),
+    sms_opted_out: Boolean(contact.sms_opted_out_at),
     tags: contact.tags,
     title: contact.title,
   };
@@ -100,7 +111,9 @@ function fieldError(message?: string) {
   return message ? <p className="mt-1 text-xs text-red-600">{message}</p> : null;
 }
 
-function buildPayload(values: ContactFormValues): ContactCreate | ContactUpdate {
+function buildPayload(values: ContactFormValues, contact?: Contact | null): ContactCreate | ContactUpdate {
+  const now = new Date().toISOString();
+
   return {
     account_id: values.account_id || null,
     custom_fields: customFieldRowsToRecord(values.custom_fields),
@@ -109,6 +122,8 @@ function buildPayload(values: ContactFormValues): ContactCreate | ContactUpdate 
     last_name: values.last_name,
     owner_id: values.owner_id || null,
     phone: values.phone,
+    sms_opted_in_at: values.sms_opted_in ? contact?.sms_opted_in_at ?? now : null,
+    sms_opted_out_at: values.sms_opted_out ? contact?.sms_opted_out_at ?? now : null,
     tags: values.tags,
     title: values.title,
   };
@@ -159,7 +174,7 @@ export function ContactForm({ contact, onOpenChange, onSaved, open }: ContactFor
 
   const saveContact = useMutation({
     mutationFn: (values: ContactFormValues) => {
-      const payload = buildPayload(values);
+      const payload = buildPayload(values, contact);
       if (contact) {
         return api.patch<Contact, ContactUpdate>(`/contacts/${contact.id}`, payload);
       }
@@ -216,6 +231,33 @@ export function ContactForm({ contact, onOpenChange, onSaved, open }: ContactFor
               <Label htmlFor="title">Title</Label>
               <Input id="title" disabled={submitting} {...form.register("title")} />
               {fieldError(form.formState.errors.title?.message)}
+            </div>
+
+            <div className="rounded-lg border border-slate-200 p-4">
+              <h3 className="text-sm font-semibold text-[#0F2444]">Messaging Preferences</h3>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-[#0F2444]" htmlFor="sms_opted_in">
+                  <input
+                    className="h-4 w-4 rounded border-slate-300 text-[#2563EB]"
+                    disabled={submitting}
+                    id="sms_opted_in"
+                    type="checkbox"
+                    {...form.register("sms_opted_in")}
+                  />
+                  SMS opt-in
+                </label>
+                <label className="flex items-center gap-2 text-sm font-medium text-[#0F2444]" htmlFor="sms_opted_out">
+                  <input
+                    className="h-4 w-4 rounded border-slate-300 text-[#2563EB]"
+                    disabled={submitting}
+                    id="sms_opted_out"
+                    type="checkbox"
+                    {...form.register("sms_opted_out")}
+                  />
+                  SMS opt-out
+                </label>
+              </div>
+              {fieldError(form.formState.errors.sms_opted_out?.message)}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">

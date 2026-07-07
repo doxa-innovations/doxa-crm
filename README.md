@@ -45,6 +45,7 @@ Fill in both files before starting the app:
 
 - `Backend/.env` uses `postgresql+asyncpg://...` for `DATABASE_URL`
 - `Frontend/.env` uses a normal `postgresql://...` URL for BetterAuth
+- For Supabase BetterAuth login, use the direct DB URL or Session Pooler on port `5432`; do not use the Transaction Pooler on port `6543`
 - `Backend SECRET_KEY` and `Frontend BETTER_AUTH_SECRET` must match
 - Keep `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, and `BETTER_AUTH_DB_POOL_MAX` small for Supabase session-pool development
 
@@ -189,7 +190,25 @@ This section answers the main CRM design questions and reflects the current impl
 
 - Campaigns store name, type, status, start/end dates, target segment, budget, owner, sequence steps, enrollments, and metrics.
 - Multi-step sequences are modeled as ordered steps with channel, subject, body, delay days, and optional variant. Steps can be reordered.
+- Campaign steps can send email and SMS messages. SMS sends require provider credentials in `Backend/.env` plus contact opt-in and a phone number.
 - Leads connect back to campaigns through `campaign_id` and UTM fields. Reports can group lead volume and conversion by campaign/source.
+
+#### Campaign SMS Setup
+
+Add these optional values to `Backend/.env`:
+
+```env
+AFROMESSAGE_API_KEY=
+# Optional AfroMessage Identifier ID used as the API "from" value.
+AFROMESSAGE_IDENTIFIER_ID=
+# Optional verified sender name.
+AFROMESSAGE_SENDER_NAME=
+AFROMESSAGE_BASE_URL=https://api.afromessage.com
+AFROMESSAGE_SEND_PATH=/api/send
+AFROMESSAGE_METHOD=POST
+```
+
+For AfroMessage, create an account, copy the API key or token from the developer dashboard, and optionally use the system Identifier ID as `AFROMESSAGE_IDENTIFIER_ID`. Leave `AFROMESSAGE_IDENTIFIER_ID` empty to use the account's default identifier.
 
 ### Customer Projects
 
@@ -243,6 +262,16 @@ If login fails with database pool errors, make sure old local servers or Docker 
 DB_POOL_SIZE=1
 DB_MAX_OVERFLOW=1
 BETTER_AUTH_DB_POOL_MAX=2
+```
+
+If login logs include `tenant/user ... not found`, check `Frontend/.env` and make sure BetterAuth is not using the Supabase Transaction Pooler:
+
+```env
+# Good for Supabase auth in local dev
+DATABASE_URL=postgresql://postgres.<project-ref>:<password>@<region>.pooler.supabase.com:5432/postgres?sslmode=require
+
+# Optional dedicated auth DB URL. When set, the frontend auth server uses this instead of DATABASE_URL.
+AUTH_DATABASE_URL=postgresql://postgres.<project-ref>:<password>@<region>.pooler.supabase.com:5432/postgres?sslmode=require
 ```
 
 If the frontend can load but backend requests fail, confirm:

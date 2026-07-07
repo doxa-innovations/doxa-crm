@@ -13,7 +13,9 @@ const envValue = (key: string, fallback: string): string => {
   return value && value.trim().length > 0 ? value : fallback;
 };
 
-const databaseUrl = envValue("DATABASE_URL", fallbackDatabaseUrl);
+const databaseUrl = validatedAuthDatabaseUrl(
+  envValue("AUTH_DATABASE_URL", envValue("DATABASE_URL", fallbackDatabaseUrl)),
+);
 const betterAuthUrl = envValue("BETTER_AUTH_URL", "http://localhost:3000");
 const backendAudience = envValue("NEXT_PUBLIC_API_URL", "http://localhost:8001");
 const betterAuthSecret =
@@ -49,6 +51,25 @@ function normalizePgConnectionString(connectionString: string): string {
   }
 }
 
+function validatedAuthDatabaseUrl(connectionString: string): string {
+  try {
+    const url = new URL(connectionString.replace("postgresql+asyncpg://", "postgresql://"));
+
+    if (url.hostname.endsWith(".pooler.supabase.com") && url.port === "6543") {
+      throw new Error(
+        "BetterAuth must use a normal Postgres URL, direct DB URL, or Supabase Session Pooler URL on port 5432. " +
+          "Do not use the Supabase Transaction Pooler on port 6543 for auth login.",
+      );
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Transaction Pooler")) {
+      throw error;
+    }
+  }
+
+  return connectionString;
+}
+
 function shouldUseSsl(connectionString: string): boolean {
   try {
     const url = new URL(connectionString.replace("postgresql+asyncpg://", "postgresql://"));
@@ -63,6 +84,7 @@ function createAuthDatabasePool(): Pool {
     allowExitOnIdle: true,
     connectionString: normalizePgConnectionString(databaseUrl),
     connectionTimeoutMillis: 5000,
+    keepAlive: true,
     idleTimeoutMillis: 10000,
     max: authPoolMax(),
     ssl: shouldUseSsl(databaseUrl) ? { rejectUnauthorized: false } : undefined,

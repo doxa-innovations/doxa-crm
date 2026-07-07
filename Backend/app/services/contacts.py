@@ -78,6 +78,8 @@ async def build_contact_response(db: AsyncSession, contact: Contact) -> ContactR
         tags=list(contact.tags or []),
         custom_fields=dict(contact.custom_fields or {}),
         is_active=contact.is_active,
+        sms_opted_in_at=contact.sms_opted_in_at,
+        sms_opted_out_at=contact.sms_opted_out_at,
         created_at=contact.created_at,
         updated_at=contact.updated_at,
     )

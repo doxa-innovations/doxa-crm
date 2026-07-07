@@ -47,6 +47,27 @@ function requiredEnv(name) {
   return value;
 }
 
+function authDatabaseUrl() {
+  const value = process.env.AUTH_DATABASE_URL || process.env.DATABASE_URL;
+  if (!value || value.trim().length === 0) {
+    throw new Error("AUTH_DATABASE_URL or DATABASE_URL is required in Frontend/.env");
+  }
+
+  validateAuthDatabaseUrl(value);
+  return value;
+}
+
+function validateAuthDatabaseUrl(connectionString) {
+  const url = new URL(connectionString.replace("postgresql+asyncpg://", "postgresql://"));
+
+  if (url.hostname.endsWith(".pooler.supabase.com") && url.port === "6543") {
+    throw new Error(
+      "BetterAuth seed data must use a normal Postgres URL, direct DB URL, or Supabase Session Pooler URL on port 5432. " +
+        "Do not use the Supabase Transaction Pooler on port 6543 for auth login.",
+    );
+  }
+}
+
 function normalizePgConnectionString(connectionString) {
   const url = new URL(connectionString);
   url.searchParams.delete("ssl");
@@ -138,7 +159,7 @@ async function ensurePassword(pool, email, fullName, role) {
 
 async function main() {
   loadEnv();
-  const connectionString = requiredEnv("DATABASE_URL");
+  const connectionString = authDatabaseUrl();
   const migrationPool = createPool(connectionString);
   const kysely = new Kysely({
     dialect: new PostgresDialect({ pool: migrationPool }),
