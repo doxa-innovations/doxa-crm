@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -13,31 +14,60 @@ logger = logging.getLogger(__name__)
 RETRYABLE_SERVER_ERRORS = {500, 502, 503, 504}
 
 
-def send_sms(to: str, message: str) -> bool:
-    settings = get_settings()
-    if not settings.afromessage_api_key:
+@dataclass(frozen=True)
+class AfroMessageConfig:
+    """Resolved AfroMessage credentials used to send an SMS.
+
+    These are sourced from the database (workspace SMS settings) when available
+    and fall back to the environment-based application settings otherwise.
+    """
+
+    api_key: str | None
+    identifier_id: str | None
+    sender_name: str | None
+    base_url: str
+    send_path: str
+    method: str
+
+
+def config_from_settings(settings: Any) -> AfroMessageConfig:
+    return AfroMessageConfig(
+        api_key=settings.afromessage_api_key,
+        identifier_id=settings.afromessage_identifier_id,
+        sender_name=settings.afromessage_sender_name,
+        base_url=settings.afromessage_base_url,
+        send_path=settings.afromessage_send_path,
+        method=settings.afromessage_method,
+    )
+
+
+def send_sms(to: str, message: str, config: AfroMessageConfig | None = None) -> bool:
+    if config is None:
+        config = config_from_settings(get_settings())
+
+    if not config.api_key:
         logger.info("sms_dry_run to=%s message_length=%s", to, len(message))
         return True
 
-    send_url = f"{settings.afromessage_base_url.rstrip('/')}/{settings.afromessage_send_path.lstrip('/')}"
+    send_url = f"{config.base_url.rstrip('/')}/{config.send_path.lstrip('/')}"
 
     params = {
         "to": to,
         "message": message,
     }
-    if settings.afromessage_identifier_id:
-        params["from"] = settings.afromessage_identifier_id
-    if settings.afromessage_sender_name:
-        params["sender"] = settings.afromessage_sender_name
+    if config.identifier_id:
+        params["from"] = config.identifier_id
+    if config.sender_name:
+        params["sender"] = config.sender_name
 
-    method = settings.afromessage_method.upper()
+    method = config.method.upper()
     if method not in {"GET", "POST"}:
-        logger.warning("sms_invalid_method method=%s using=POST", settings.afromessage_method)
+        logger.warning("sms_invalid_method method=%s using=POST", config.method)
         method = "POST"
 
     try:
         with httpx.Client(timeout=15) as client:
-            response = _send_request(client, method, send_url, settings.afromessage_api_key, params)
+            response = _send_request(client, method, send_url, config.api_key, params)
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
@@ -47,7 +77,7 @@ def send_sms(to: str, message: str) -> bool:
                         to,
                         exc.response.status_code,
                     )
-                    response = _send_request(client, "GET", send_url, settings.afromessage_api_key, params)
+                    response = _send_request(client, "GET", send_url, config.api_key, params)
                     response.raise_for_status()
                 else:
                     raise

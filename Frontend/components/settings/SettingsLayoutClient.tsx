@@ -1,6 +1,6 @@
 "use client";
 
-import { CreditCard, Plug, SlidersHorizontal, Users } from "lucide-react";
+import { MessageSquare, SlidersHorizontal, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
@@ -19,8 +19,7 @@ const allowedRoles: CrmRole[] = ["super_admin", "sales_manager"];
 const settingsLinks = [
   { href: "/settings/users", icon: Users, label: "Users" },
   { href: "/settings/pipeline", icon: SlidersHorizontal, label: "Pipeline" },
-  { href: "/settings/integrations", icon: Plug, label: "Integrations" },
-  { href: "/settings/billing", icon: CreditCard, label: "Billing" },
+  { href: "/settings/sms", icon: MessageSquare, label: "SMS" },
 ];
 
 export function SettingsLayoutClient({ children }: SettingsLayoutClientProps) {

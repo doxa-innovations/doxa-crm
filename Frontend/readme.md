@@ -222,8 +222,7 @@ Authenticated CRM pages:
 /settings
 /settings/users
 /settings/pipeline
-/settings/integrations
-/settings/billing
+/settings/sms
 ```
 
 Public page:

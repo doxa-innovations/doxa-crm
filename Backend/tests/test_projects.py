@@ -25,7 +25,7 @@ from app.dependencies import get_current_user, get_db
 from app.main import create_app
 from app.models import ProjectHealth, UserRoleName
 import app.routers.projects as projects_router_module
-from app.schemas.projects import ProjectPortalResponse, ProjectResponse
+from app.schemas.projects import MilestoneUpdate, ProjectPortalResponse, ProjectResponse
 from app.services import projects as projects_service
 from app.services.project_health import calculate_project_health
 
@@ -196,6 +196,43 @@ async def test_complete_milestone_sets_completed_at_and_updates_health():
     assert response.completed_at is not None
     assert milestone.completed_at is not None
     assert project.health == ProjectHealth.green
+    assert db.committed is True
+
+
+@pytest.mark.asyncio
+async def test_update_milestone_can_clear_completed_at_and_updates_health():
+    now = datetime.now(timezone.utc)
+    project_id = uuid4()
+    milestone_id = uuid4()
+    project = SimpleNamespace(id=project_id, health=ProjectHealth.green)
+    milestone = SimpleNamespace(
+        id=milestone_id,
+        project_id=project_id,
+        title="Kickoff",
+        due_date=date.today() - timedelta(days=1),
+        completed_at=now,
+        created_at=now,
+        updated_at=now,
+    )
+    db = FakeSession(
+        [
+            FakeResult(value=project),
+            FakeResult(value=milestone),
+            FakeResult(value=project),
+            FakeResult(values=[milestone]),
+        ]
+    )
+
+    response = await projects_service.update_milestone(
+        db,
+        project_id,
+        milestone_id,
+        MilestoneUpdate(completed_at=None),
+    )
+
+    assert response.completed_at is None
+    assert milestone.completed_at is None
+    assert project.health == ProjectHealth.red
     assert db.committed is True
 
 

@@ -104,6 +104,15 @@ async def pause_campaign(
     return await campaigns_service.pause_campaign(db, campaign_id)
 
 
+@router.post("/{campaign_id}/restart", response_model=CampaignResponse)
+async def restart_campaign(
+    campaign_id: UUID,
+    current_user: Annotated[User, Depends(require_role(*CAMPAIGN_WRITE_ROLES))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> CampaignResponse:
+    return await campaigns_service.restart_campaign(db, campaign_id)
+
+
 @router.get("/{campaign_id}/enrollments", response_model=list[CampaignEnrollmentResponse])
 async def list_enrollments(
     campaign_id: UUID,

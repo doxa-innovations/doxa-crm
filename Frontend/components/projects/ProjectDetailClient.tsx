@@ -28,7 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { usePermissions } from "@/lib/permissions";
 import { cn, formatDate } from "@/lib/utils";
-import type { Milestone, MilestoneCreate, Project, ProjectDocument } from "@/types/api";
+import type { Milestone, MilestoneCreate, MilestoneUpdate, Project, ProjectDocument } from "@/types/api";
 
 interface ProjectDetailClientProps {
   projectId: string;
@@ -136,14 +136,15 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
     },
   });
 
-  const completeMilestone = useMutation({
-    mutationFn: (milestoneId: string) => api.post<Milestone>(`/projects/${projectId}/milestones/${milestoneId}/complete`),
-    onMutate: async (milestoneId) => {
+  const toggleMilestone = useMutation({
+    mutationFn: ({ completedAt, milestoneId }: { completedAt: string | null; milestoneId: string }) =>
+      api.patch<Milestone, MilestoneUpdate>(`/projects/${projectId}/milestones/${milestoneId}`, { completed_at: completedAt }),
+    onMutate: async ({ completedAt, milestoneId }) => {
       await queryClient.cancelQueries({ queryKey: ["projects", "milestones", projectId] });
       const previous = queryClient.getQueryData<Milestone[]>(["projects", "milestones", projectId]);
       queryClient.setQueryData<Milestone[]>(["projects", "milestones", projectId], (current) =>
         (current ?? milestones).map((milestone) =>
-          milestone.id === milestoneId ? { ...milestone, completed_at: new Date().toISOString() } : milestone,
+          milestone.id === milestoneId ? { ...milestone, completed_at: completedAt } : milestone,
         ),
       );
 
@@ -215,12 +216,15 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
     });
   }
 
-  function handleCompleteMilestone(milestone: Milestone) {
-    if (milestone.completed_at || completeMilestone.isPending) {
+  function handleToggleMilestone(milestone: Milestone) {
+    if (toggleMilestone.isPending) {
       return;
     }
 
-    completeMilestone.mutate(milestone.id);
+    toggleMilestone.mutate({
+      completedAt: milestone.completed_at ? null : new Date().toISOString(),
+      milestoneId: milestone.id,
+    });
   }
 
   function handleDeleteMilestone(milestone: Milestone) {
@@ -352,15 +356,16 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
               return (
                 <div className="flex items-start gap-4 rounded-lg border border-slate-100 bg-white p-4 shadow-[0_1px_0_rgba(15,36,68,0.03)]" key={milestone.id}>
                   <button
-                    aria-label={completed ? "Milestone completed" : "Complete milestone"}
+                    aria-label={completed ? "Mark milestone incomplete" : "Complete milestone"}
                     className={cn(
                       "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border transition",
                       completed
                         ? "border-emerald-500 bg-emerald-500 text-white"
                         : "border-slate-300 bg-white text-transparent hover:border-[#2563EB] hover:text-[#2563EB]",
                     )}
-                    disabled={!canWriteProjects || completed || completeMilestone.isPending}
-                    onClick={() => handleCompleteMilestone(milestone)}
+                    disabled={!canWriteProjects || toggleMilestone.isPending}
+                    onClick={() => handleToggleMilestone(milestone)}
+                    title={completed ? "Mark incomplete" : "Mark complete"}
                     type="button"
                   >
                     <CheckCircle2 className="h-4 w-4" aria-hidden="true" />

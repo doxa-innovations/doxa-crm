@@ -27,6 +27,7 @@ from app.models.deals import Deal, DealCollaborator, DealStageHistory, DealStatu
 from app.models.leads import Lead, LeadSource, LeadStatus
 from app.models.projects import Milestone, Project, ProjectDocument, ProjectHealth
 from app.models.reports import ReportSnapshot, SalesQuota
+from app.models.sms_settings import SmsSetting
 from app.models.task_logs import TaskLog
 from app.models.users import Role, User, UserRole, UserRoleName
 from app.models.webhooks import WebhookLog, WebhookSubscription
@@ -68,6 +69,7 @@ __all__ = [
     "ReportSnapshot",
     "Role",
     "SalesQuota",
+    "SmsSetting",
     "Task",
     "TaskLog",
     "TaskPriority",

@@ -278,6 +278,11 @@ export const api = {
     body?: TBody,
     options: Omit<ApiClientOptions, "body" | "method"> = {},
   ) => apiClient<T>(path, { ...options, body, method: "POST" }),
+  put: <T, TBody = unknown>(
+    path: string,
+    body: TBody,
+    options: Omit<ApiClientOptions, "body" | "method"> = {},
+  ) => apiClient<T>(path, { ...options, body, method: "PUT" }),
   postForm: <T>(path: string, formData: FormData, options: Omit<ApiClientOptions, "body" | "method"> = {}) =>
     apiClient<T>(path, { ...options, body: formData, method: "POST" }),
 };

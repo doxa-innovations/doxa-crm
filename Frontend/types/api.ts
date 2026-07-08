@@ -307,6 +307,28 @@ export interface PipelineStageUpdate {
   order_index?: number;
 }
 
+export interface SmsSettings {
+  id: UUID;
+  api_key_set: boolean;
+  api_key_preview: string | null;
+  identifier_id: string | null;
+  sender_name: string | null;
+  base_url: string;
+  send_path: string;
+  method: string;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+}
+
+export interface SmsSettingsUpdate {
+  api_key?: string | null;
+  identifier_id?: string | null;
+  sender_name?: string | null;
+  base_url?: string;
+  send_path?: string;
+  method?: string;
+}
+
 export interface DealSummary {
   id: UUID;
   title: string;

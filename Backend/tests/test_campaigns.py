@@ -305,9 +305,12 @@ async def test_enroll_contacts_is_idempotent_for_active_enrollment(monkeypatch):
             FakeResult(value=contact),
         ]
     )
-    scheduled: list[UUID] = []
+    scheduled: list[tuple[UUID, int]] = []
 
-    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", scheduled.append)
+    def fake_schedule(enrollment_id: UUID, step_index: int):
+        scheduled.append((enrollment_id, step_index))
+
+    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", fake_schedule)
 
     result = await campaigns_service.enroll_contacts(
         db,
@@ -346,9 +349,12 @@ async def test_enroll_contacts_restarts_unsubscribed_enrollment(monkeypatch):
             FakeResult(value=contact),
         ]
     )
-    scheduled: list[UUID] = []
+    scheduled: list[tuple[UUID, int]] = []
 
-    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", scheduled.append)
+    def fake_schedule(enrollment_id: UUID, step_index: int):
+        scheduled.append((enrollment_id, step_index))
+
+    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", fake_schedule)
 
     result = await campaigns_service.enroll_contacts(
         db,
@@ -360,7 +366,7 @@ async def test_enroll_contacts_restarts_unsubscribed_enrollment(monkeypatch):
     assert enrollment.status == CampaignEnrollmentStatus.active
     assert enrollment.step_index == 0
     assert enrollment.enrolled_at > old_enrolled_at
-    assert scheduled == [enrollment.id]
+    assert scheduled == [(enrollment.id, 0)]
 
 
 @pytest.mark.asyncio
@@ -387,9 +393,12 @@ async def test_enroll_contacts_does_not_schedule_draft_campaign(monkeypatch):
             FakeResult(value=contact),
         ]
     )
-    scheduled: list[UUID] = []
+    scheduled: list[tuple[UUID, int]] = []
 
-    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", scheduled.append)
+    def fake_schedule(enrollment_id: UUID, step_index: int):
+        scheduled.append((enrollment_id, step_index))
+
+    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", fake_schedule)
 
     result = await campaigns_service.enroll_contacts(
         db,
@@ -400,6 +409,121 @@ async def test_enroll_contacts_does_not_schedule_draft_campaign(monkeypatch):
     assert result[0].status == CampaignEnrollmentStatus.active
     assert enrollment.status == CampaignEnrollmentStatus.active
     assert scheduled == []
+
+
+@pytest.mark.asyncio
+async def test_activate_campaign_schedules_every_active_enrollment(monkeypatch):
+    campaign_id = uuid4()
+    owner_id = uuid4()
+    enrollment_ids = [uuid4(), uuid4()]
+    now = datetime.now(timezone.utc)
+    campaign = SimpleNamespace(
+        id=campaign_id,
+        name="SMS Launch",
+        type=CampaignType.sms,
+        status=CampaignStatus.draft,
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 6, 30),
+        target_segment={},
+        budget=Decimal("1000.00"),
+        owner_id=owner_id,
+        created_at=now,
+        updated_at=now,
+    )
+    db = FakeSession(
+        [
+            FakeResult(value=campaign),
+            FakeResult(scalar_value=1),
+            FakeResult(scalar_value=len(enrollment_ids)),
+            FakeResult(values=[(enrollment_id, 0) for enrollment_id in enrollment_ids]),
+            FakeResult(value="Marketing Manager"),
+            FakeResult(scalar_value=len(enrollment_ids)),
+            FakeResult(rows=[]),
+        ]
+    )
+    scheduled: list[tuple[UUID, int]] = []
+
+    def fake_schedule(enrollment_id: UUID, step_index: int):
+        scheduled.append((enrollment_id, step_index))
+
+    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", fake_schedule)
+
+    result = await campaigns_service.activate_campaign(db, campaign_id)
+
+    assert result.status == CampaignStatus.active
+    assert result.enrollment_count == 2
+    assert campaign.status == CampaignStatus.active
+    assert db.committed is True
+    assert scheduled == [(enrollment_id, 0) for enrollment_id in enrollment_ids]
+
+
+@pytest.mark.asyncio
+async def test_restart_campaign_resets_enrollments_metrics_and_schedules_first_step(monkeypatch):
+    campaign_id = uuid4()
+    owner_id = uuid4()
+    now = datetime.now(timezone.utc)
+    campaign = SimpleNamespace(
+        id=campaign_id,
+        name="SMS Launch",
+        type=CampaignType.sms,
+        status=CampaignStatus.completed,
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 6, 30),
+        target_segment={},
+        budget=Decimal("1000.00"),
+        owner_id=owner_id,
+        created_at=now,
+        updated_at=now,
+    )
+    enrollments = [
+        SimpleNamespace(
+            id=uuid4(),
+            campaign_id=campaign_id,
+            contact_id=uuid4(),
+            enrolled_at=now,
+            step_index=2,
+            status=CampaignEnrollmentStatus.completed,
+            created_at=now,
+            updated_at=now,
+        ),
+        SimpleNamespace(
+            id=uuid4(),
+            campaign_id=campaign_id,
+            contact_id=uuid4(),
+            enrolled_at=now,
+            step_index=1,
+            status=CampaignEnrollmentStatus.active,
+            created_at=now,
+            updated_at=now,
+        ),
+    ]
+    db = FakeSession(
+        [
+            FakeResult(value=campaign),
+            FakeResult(scalar_value=1),
+            FakeResult(values=enrollments),
+            FakeResult(),
+            FakeResult(value="Marketing Manager"),
+            FakeResult(scalar_value=len(enrollments)),
+            FakeResult(rows=[]),
+        ]
+    )
+    scheduled: list[tuple[UUID, int]] = []
+
+    def fake_schedule(enrollment_id: UUID, step_index: int):
+        scheduled.append((enrollment_id, step_index))
+
+    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", fake_schedule)
+
+    result = await campaigns_service.restart_campaign(db, campaign_id)
+
+    assert result.status == CampaignStatus.active
+    assert result.metrics.sent == 0
+    assert campaign.status == CampaignStatus.active
+    assert {enrollment.status for enrollment in enrollments} == {CampaignEnrollmentStatus.active}
+    assert [enrollment.step_index for enrollment in enrollments] == [0, 0]
+    assert all(enrollment.enrolled_at > now for enrollment in enrollments)
+    assert scheduled == [(enrollment.id, 0) for enrollment in enrollments]
 
 
 @pytest.mark.asyncio
@@ -512,8 +636,33 @@ async def test_process_campaign_step_sends_email_records_metric_and_schedules_ne
     assert enrollment.step_index == 1
     assert db.committed is True
     assert db.added[0].event_type == CampaignMetricEventType.sent
-    assert scheduled["args"] == [str(enrollment_id)]
+    assert scheduled["args"] == [str(enrollment_id), 1]
     assert scheduled["countdown"] == 172800
+
+
+@pytest.mark.asyncio
+async def test_process_campaign_step_skips_stale_scheduled_step(monkeypatch):
+    enrollment_id = uuid4()
+    enrollment = SimpleNamespace(
+        id=enrollment_id,
+        campaign_id=uuid4(),
+        contact_id=uuid4(),
+        step_index=1,
+        status=CampaignEnrollmentStatus.active,
+    )
+    db = FakeSession([FakeResult(value=enrollment)])
+
+    monkeypatch.setattr(campaign_tasks, "AsyncSessionLocal", lambda: db)
+
+    result = await campaign_tasks._process_campaign_step(enrollment_id, scheduled_step_index=0)
+
+    assert result == {
+        "status": "skipped",
+        "reason": "stale_scheduled_step",
+        "current_step_index": 1,
+        "scheduled_step_index": 0,
+    }
+    assert db.committed is False
 
 
 @pytest.mark.asyncio

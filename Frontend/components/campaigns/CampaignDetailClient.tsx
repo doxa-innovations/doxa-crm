@@ -15,6 +15,7 @@ import {
   Play,
   Plus,
   Reply,
+  RotateCcw,
   Share2,
   Target,
   Trash2,
@@ -149,6 +150,7 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
   const [editingStep, setEditingStep] = useState<CampaignSequenceStep | null>(null);
   const [contactSelectOpen, setContactSelectOpen] = useState(false);
   const [deleteCampaignOpen, setDeleteCampaignOpen] = useState(false);
+  const [restartCampaignOpen, setRestartCampaignOpen] = useState(false);
   const [metricContactId, setMetricContactId] = useState("");
   const [metricStepId, setMetricStepId] = useState("");
 
@@ -186,6 +188,16 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       void queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", campaignId] });
+      void queryClient.invalidateQueries({ queryKey: ["campaigns", "metrics", campaignId] });
+    },
+  });
+  const restartCampaign = useMutation({
+    mutationFn: () => api.post<Campaign>(`/campaigns/${campaignId}/restart`),
+    onSuccess: () => {
+      setRestartCampaignOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      void queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", campaignId] });
+      void queryClient.invalidateQueries({ queryKey: ["campaigns", "enrollments", campaignId] });
       void queryClient.invalidateQueries({ queryKey: ["campaigns", "metrics", campaignId] });
     },
   });
@@ -235,8 +247,11 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
   const hasMetrics = Boolean(metrics && Object.values(metrics).some((value) => value > 0));
   const hasSteps = steps.length > 0;
   const hasActiveEnrollments = enrollments.some((enrollment) => enrollment.status === "active");
+  const hasRestartableEnrollments = enrollments.some((enrollment) => enrollment.status !== "unsubscribed");
   const canActivate = hasSteps && hasActiveEnrollments && campaign?.status !== "active" && campaign?.status !== "completed";
+  const canRestart = Boolean(campaign && campaign.status !== "draft" && hasSteps && hasRestartableEnrollments);
   const disabledActivationReason = !hasSteps ? "Add at least one sequence step before activating." : !hasActiveEnrollments ? "Enroll active contacts before activating." : "";
+  const disabledRestartReason = !hasSteps ? "Add at least one sequence step before restarting." : !hasRestartableEnrollments ? "Enroll contacts before restarting." : "";
   const sortedSteps = [...steps].sort((left, right) => left.step_index - right.step_index);
   const variantComparison = useMemo(() => variantRows(steps), [steps]);
   const metricContactOptions = enrollments.filter((enrollment) => enrollment.status !== "unsubscribed");
@@ -373,9 +388,11 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
             {canWriteCampaigns ? (
               <div className="mt-5">
                 {campaign.status === "completed" ? (
-                  <p className="text-sm font-medium text-[#64748B]">This campaign is completed.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
+                  <p className="text-sm font-medium text-[#64748B]">This campaign is completed. Restart it to send the sequence from step 1 again.</p>
+                ) : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {campaign.status !== "completed" ? (
+                    <>
                     {campaign.status === "active" ? (
                       <Button disabled={pauseCampaign.isPending} onClick={() => pauseCampaign.mutate()} type="button" variant="outline">
                         <Pause className="h-4 w-4" aria-hidden="true" />
@@ -389,15 +406,25 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
                         </Button>
                       </div>
                     )}
-                    {(campaign.status === "active" || campaign.status === "paused") ? (
-                      <Button disabled={completeCampaign.isPending} onClick={() => completeCampaign.mutate()} type="button" variant="outline">
-                        <CheckCircle className="h-4 w-4" aria-hidden="true" />
-                        Mark Complete
+                    </>
+                  ) : null}
+                  {(campaign.status === "active" || campaign.status === "paused") ? (
+                    <Button disabled={completeCampaign.isPending} onClick={() => completeCampaign.mutate()} type="button" variant="outline">
+                      <CheckCircle className="h-4 w-4" aria-hidden="true" />
+                      Mark Complete
+                    </Button>
+                  ) : null}
+                  {campaign.status !== "draft" ? (
+                    <div className="inline-flex" title={!canRestart ? disabledRestartReason : undefined}>
+                      <Button disabled={!canRestart || restartCampaign.isPending} onClick={() => setRestartCampaignOpen(true)} type="button" variant="outline">
+                        <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                        Restart
                       </Button>
-                    ) : null}
-                  </div>
-                )}
+                    </div>
+                  ) : null}
+                </div>
                 {!canActivate && campaign.status !== "active" && campaign.status !== "completed" ? <p className="mt-2 text-xs text-amber-700">{disabledActivationReason}</p> : null}
+                {!canRestart && campaign.status !== "draft" ? <p className="mt-2 text-xs text-amber-700">{disabledRestartReason}</p> : null}
               </div>
             ) : null}
           </section>
@@ -686,6 +713,15 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
             onOpenChange={setDeleteCampaignOpen}
             open={deleteCampaignOpen}
             title="Delete campaign"
+          />
+          <ConfirmDialog
+            confirmLabel="Restart"
+            description="Restart this campaign from step 1 for every enrolled contact that has not been removed. Existing metrics will reset, and messages can be sent again."
+            isPending={restartCampaign.isPending}
+            onConfirm={() => restartCampaign.mutate()}
+            onOpenChange={setRestartCampaignOpen}
+            open={restartCampaignOpen}
+            title="Restart campaign"
           />
         </>
       ) : null}

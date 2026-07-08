@@ -94,6 +94,7 @@ from app.schemas.reports import (
     WinLossRow,
 )
 from app.schemas.search import GlobalSearchResponse, SearchResult
+from app.schemas.sms_settings import SmsSettingResponse, SmsSettingUpdate
 from app.schemas.webhooks import (
     CalendarEventPayload,
     EmailInboundPayload,
@@ -185,6 +186,8 @@ __all__ = [
     "WinLossRow",
     "GlobalSearchResponse",
     "SearchResult",
+    "SmsSettingResponse",
+    "SmsSettingUpdate",
     "CalendarEventPayload",
     "EmailInboundPayload",
     "LeadFormPayload",

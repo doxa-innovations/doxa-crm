@@ -20,6 +20,7 @@ from app.models import (
     CampaignStatus,
     Contact,
 )
+from app.services.sms_settings import resolve_sms_config
 from app.utils.afromessage import send_sms
 from app.utils.email import send_email
 from app.workers.celery_app import celery_app
@@ -40,16 +41,16 @@ class CampaignDeliveryResult:
     default_retry_delay=60,
     name="app.workers.campaign_tasks.process_campaign_step",
 )
-def process_campaign_step(self, enrollment_id: str) -> dict[str, Any]:
+def process_campaign_step(self, enrollment_id: str, scheduled_step_index: int | None = None) -> dict[str, Any]:
     return execute_with_retry(
         self,
         self.name,
-        lambda: _process_campaign_step(UUID(str(enrollment_id))),
-        {"enrollment_id": enrollment_id},
+        lambda: _process_campaign_step(UUID(str(enrollment_id)), scheduled_step_index),
+        {"enrollment_id": enrollment_id, "scheduled_step_index": scheduled_step_index},
     )
 
 
-async def _process_campaign_step(enrollment_id: UUID) -> dict[str, Any]:
+async def _process_campaign_step(enrollment_id: UUID, scheduled_step_index: int | None = None) -> dict[str, Any]:
     async with AsyncSessionLocal() as db:
         enrollment_result = await db.execute(
             select(CampaignEnrollment).where(CampaignEnrollment.id == enrollment_id)
@@ -60,6 +61,14 @@ async def _process_campaign_step(enrollment_id: UUID) -> dict[str, Any]:
 
         if enrollment.status != CampaignEnrollmentStatus.active:
             return {"status": "skipped", "reason": enrollment.status.value}
+
+        if scheduled_step_index is not None and enrollment.step_index != scheduled_step_index:
+            return {
+                "status": "skipped",
+                "reason": "stale_scheduled_step",
+                "current_step_index": enrollment.step_index,
+                "scheduled_step_index": scheduled_step_index,
+            }
 
         campaign_result = await db.execute(select(Campaign).where(Campaign.id == enrollment.campaign_id))
         campaign = campaign_result.scalar_one_or_none()
@@ -128,7 +137,7 @@ async def _process_campaign_step(enrollment_id: UUID) -> dict[str, Any]:
         enrollment.step_index = next_step.step_index
         await db.commit()
         process_campaign_step.apply_async(
-            args=[str(enrollment.id)],
+            args=[str(enrollment.id), next_step.step_index],
             countdown=next_step.delay_days * 86400,
         )
         return {
@@ -179,7 +188,7 @@ async def _enroll_contact_in_campaign(campaign_id: UUID, contact_id: UUID) -> di
 
         await db.commit()
         if campaign.status == CampaignStatus.active:
-            process_campaign_step.apply_async(args=[str(enrollment.id)], countdown=0)
+            process_campaign_step.apply_async(args=[str(enrollment.id), enrollment.step_index], countdown=0)
         return {"status": "enrolled", "enrollment_id": str(enrollment.id)}
 
 
@@ -191,7 +200,9 @@ async def send_email_via_resend(to_email: str, subject: str, body: str) -> dict[
 
 
 async def send_sms_via_afromessage(to_phone: str, message: str) -> dict[str, Any]:
-    sent = await asyncio.to_thread(send_sms, to_phone, message)
+    async with AsyncSessionLocal() as db:
+        config = await resolve_sms_config(db)
+    sent = await asyncio.to_thread(send_sms, to_phone, message, config)
     if not sent:
         raise RuntimeError("Campaign SMS could not be sent")
     return {"id": "sent", "to": to_phone}
