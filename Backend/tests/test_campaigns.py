@@ -627,7 +627,7 @@ async def test_process_campaign_step_sends_email_records_metric_and_schedules_ne
         scheduled["countdown"] = countdown
 
     monkeypatch.setattr(campaign_tasks, "AsyncSessionLocal", lambda: db)
-    monkeypatch.setattr(campaign_tasks, "send_email_via_resend", fake_send_email)
+    monkeypatch.setattr(campaign_tasks, "send_email_via_mailersend", fake_send_email)
     monkeypatch.setattr(campaign_tasks.process_campaign_step, "apply_async", fake_apply_async)
 
     result = await campaign_tasks._process_campaign_step(enrollment_id)

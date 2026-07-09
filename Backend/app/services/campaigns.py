@@ -420,6 +420,55 @@ async def record_campaign_metric(
     return CampaignMetricResponse.model_validate(metric)
 
 
+async def record_email_engagement(
+    db: AsyncSession,
+    *,
+    campaign_id: UUID,
+    contact_id: UUID,
+    step_id: UUID,
+    event_type: CampaignMetricEventType,
+) -> bool:
+    """Record an open/click metric from a provider webhook, deduplicated.
+
+    Returns True when a new metric row was created, False when it was a
+    duplicate or the referenced campaign/enrollment no longer exists.
+    """
+    campaign = await db.execute(select(Campaign.id).where(Campaign.id == campaign_id))
+    if campaign.scalar_one_or_none() is None:
+        return False
+
+    enrollment = await db.execute(
+        select(CampaignEnrollment.id).where(
+            CampaignEnrollment.campaign_id == campaign_id,
+            CampaignEnrollment.contact_id == contact_id,
+        )
+    )
+    if enrollment.scalar_one_or_none() is None:
+        return False
+
+    existing = await db.execute(
+        select(CampaignMetric.id).where(
+            CampaignMetric.campaign_id == campaign_id,
+            CampaignMetric.contact_id == contact_id,
+            CampaignMetric.step_id == step_id,
+            CampaignMetric.event_type == event_type,
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        return False
+
+    db.add(
+        CampaignMetric(
+            campaign_id=campaign_id,
+            contact_id=contact_id,
+            step_id=step_id,
+            event_type=event_type,
+        )
+    )
+    await db.commit()
+    return True
+
+
 async def list_steps(db: AsyncSession, campaign_id: UUID) -> list[CampaignStepResponse]:
     await get_campaign_model(db, campaign_id)
     result = await db.execute(

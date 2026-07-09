@@ -22,7 +22,8 @@ from app.models import (
 )
 from app.services.sms_settings import resolve_sms_config
 from app.utils.afromessage import send_sms
-from app.utils.email import send_email
+from app.utils.mailersend_email import send_email
+from app.utils.mailersend_webhook import build_campaign_email_tags
 from app.workers.celery_app import celery_app
 from app.workers.task_logging import execute_with_retry
 
@@ -192,8 +193,13 @@ async def _enroll_contact_in_campaign(campaign_id: UUID, contact_id: UUID) -> di
         return {"status": "enrolled", "enrollment_id": str(enrollment.id)}
 
 
-async def send_email_via_resend(to_email: str, subject: str, body: str) -> dict[str, Any]:
-    sent = await asyncio.to_thread(send_email, to_email, subject, body)
+async def send_email_via_mailersend(
+    to_email: str,
+    subject: str,
+    body: str,
+    tags: list[str] | None = None,
+) -> dict[str, Any]:
+    sent = await asyncio.to_thread(send_email, to_email, subject, body, tags)
     if not sent:
         raise RuntimeError("Campaign email could not be sent")
     return {"id": "sent", "to": to_email}
@@ -216,7 +222,8 @@ async def send_campaign_step_message(
     body = (step.body or step.subject).strip()
 
     if channel == CampaignSequenceChannel.email.value:
-        await send_email_via_resend(contact.email, step.subject, body)
+        tags = build_campaign_email_tags(step.campaign_id, contact.id, step.id)
+        await send_email_via_mailersend(contact.email, step.subject, body, tags)
         return CampaignDeliveryResult(delivered=True, reason="sent")
 
     if channel == CampaignSequenceChannel.sms.value:

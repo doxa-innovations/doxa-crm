@@ -19,7 +19,9 @@ from app.schemas.webhooks import (
     WebhookSubscriptionCreate,
     WebhookSubscriptionResponse,
 )
+from app.services import campaigns as campaigns_service
 from app.services import webhooks as webhooks_service
+from app.utils.mailersend_webhook import parse_campaign_email_event, verify_mailersend_signature
 from app.utils.webhooks import verify_hmac_signature
 from app.workers import webhook_tasks
 
@@ -79,6 +81,74 @@ async def receive_calendar_event(
         signature=x_webhook_signature or x_hub_signature_256,
     )
     webhook_tasks.process_calendar_event.apply_async(args=[payload.model_dump(mode="json"), str(webhook_log.id)])
+    return WebhookAck()
+
+
+@router.post("/mailersend", response_model=WebhookAck)
+async def receive_mailersend_activity(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    signature: str | None = Header(default=None, alias="Signature"),
+) -> WebhookAck:
+    settings = get_settings()
+    if not settings.mailersend_webhook_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MailerSend webhook secret is not configured",
+        )
+
+    body = await request.body()
+    if not verify_mailersend_signature(body, signature, settings.mailersend_webhook_secret):
+        await webhooks_service.log_inbound_webhook(
+            db,
+            event_type="mailersend_activity",
+            status="rejected",
+            payload={"raw_size": len(body)},
+            signature=signature,
+            error="Invalid MailerSend signature",
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook signature")
+
+    try:
+        raw_payload = json.loads(body.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        await webhooks_service.log_inbound_webhook(
+            db,
+            event_type="mailersend_activity",
+            status="rejected",
+            payload={"raw_size": len(body)},
+            signature=signature,
+            error="Invalid JSON payload",
+        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload") from exc
+
+    event = parse_campaign_email_event(raw_payload)
+    if event is None:
+        # Unhandled event type or a message without our campaign tags: ack so
+        # MailerSend does not retry, but record nothing.
+        await webhooks_service.log_inbound_webhook(
+            db,
+            event_type=f"mailersend_{raw_payload.get('type', 'unknown')}",
+            status="ignored",
+            payload=_safe_payload(raw_payload),
+            signature=signature,
+        )
+        return WebhookAck()
+
+    recorded = await campaigns_service.record_email_engagement(
+        db,
+        campaign_id=event.campaign_id,
+        contact_id=event.contact_id,
+        step_id=event.step_id,
+        event_type=event.event_type,
+    )
+    await webhooks_service.log_inbound_webhook(
+        db,
+        event_type=f"mailersend_{raw_payload.get('type', 'unknown')}",
+        status="accepted" if recorded else "duplicate",
+        payload=_safe_payload(raw_payload),
+        signature=signature,
+    )
     return WebhookAck()
 
 

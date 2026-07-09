@@ -9,8 +9,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN python -m pip install --upgrade pip \
-    && python -m pip install --prefix=/install -r requirements.txt
+RUN python -m pip install --upgrade pip --retries 10 --timeout 120 \
+    && python -m pip install --prefix=/install --retries 10 --timeout 120 -r requirements.txt
 
 
 FROM python:3.12-slim AS runtime
