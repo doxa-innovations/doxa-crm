@@ -190,10 +190,26 @@ This section answers the main CRM design questions and reflects the current impl
 
 - Campaigns store name, type, status, start/end dates, target segment, budget, owner, sequence steps, enrollments, and metrics.
 - Multi-step sequences are modeled as ordered steps with channel, subject, body, delay days, and optional variant. Steps can be reordered.
-- Campaign steps can send email and SMS messages. SMS sends require provider credentials in `Backend/.env` plus contact opt-in and a phone number.
+- Campaign steps can send email and SMS messages. SMS sends require provider credentials plus contact opt-in and a phone number.
 - Leads connect back to campaigns through `campaign_id` and UTM fields. Reports can group lead volume and conversion by campaign/source.
 
+#### Campaign Email Tracking
+
+Campaign email delivery uses MailerSend for the automated campaign send path.
+
+- Outbound email sends use `MAILERSEND_API_KEY` and `MAILERSEND_FROM_EMAIL`
+- Open and click metrics are collected from the MailerSend webhook at `POST /api/v1/webhooks/mailersend`
+- The webhook must point at a publicly reachable HTTPS backend URL
+- Reply tracking is not automatic yet and would need additional inbound reply handling
+
 #### Campaign SMS Setup
+
+SMS credentials are managed from the CRM settings page and stored in the database.
+
+- UI: `/settings/sms`
+- API: `GET /api/v1/settings/sms/` and `PUT /api/v1/settings/sms/`
+- Storage: a singleton `sms_settings` row in PostgreSQL
+- Behavior: saved database values are used first, and blank fields fall back to `Backend/.env`
 
 Add these optional values to `Backend/.env`:
 
@@ -206,9 +222,11 @@ AFROMESSAGE_SENDER_NAME=
 AFROMESSAGE_BASE_URL=https://api.afromessage.com
 AFROMESSAGE_SEND_PATH=/api/send
 AFROMESSAGE_METHOD=POST
+MAILERSEND_API_KEY=
+MAILERSEND_FROM_EMAIL=no-reply@your-verified-domain.example
+MAILERSEND_FROM_NAME=
+MAILERSEND_WEBHOOK_SECRET=
 ```
-
-For AfroMessage, create an account, copy the API key or token from the developer dashboard, and optionally use the system Identifier ID as `AFROMESSAGE_IDENTIFIER_ID`. Leave `AFROMESSAGE_IDENTIFIER_ID` empty to use the account's default identifier.
 
 ### Customer Projects
 
