@@ -4,8 +4,10 @@ from celery import Celery
 from celery.schedules import crontab
 
 from app.config import get_settings
+from app.logging_config import configure_logging
 
 settings = get_settings()
+configure_logging(settings.log_level)
 
 WORKER_TASK_MODULES = [
     "app.workers.tasks",

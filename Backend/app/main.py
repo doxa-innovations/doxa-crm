@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -12,12 +13,16 @@ from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.database import check_database_connection, close_database_connections
+from app.logging_config import configure_logging
 from app.middleware.audit import AuditContextMiddleware, install_audit_listeners
 from app.middleware.rate_limit import apply_rate_limiting
 from app.routers import api_router
 
 settings = get_settings()
+configure_logging(settings.log_level)
 install_audit_listeners()
+
+logger = logging.getLogger(__name__)
 
 OPENAPI_TAGS = [
     {"name": "Users", "description": "User administration and RBAC"},
@@ -99,6 +104,11 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        logger.exception(
+            "unhandled_error method=%s path=%s",
+            request.method,
+            request.url.path,
+        )
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": "Internal server error", "code": "internal_error"},
