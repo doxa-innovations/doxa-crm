@@ -8,16 +8,41 @@ import { normalizeRole } from "@/lib/auth-types";
 
 const fallbackDatabaseUrl = "postgresql://postgres:postgres@127.0.0.1:5432/postgres";
 const fallbackSecret = "doxa-crm-local-development-secret";
-const envValue = (key: string, fallback: string): string => {
+
+// `next build` runs with NODE_ENV=production and imports route handlers, so this
+// module is evaluated at build time when runtime secrets legitimately are not
+// set. Fail fast at runtime only.
+const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+const mustFailFast = process.env.NODE_ENV === "production" && !isBuildPhase;
+
+const requireEnv = (key: string, fallback: string): string => {
   const value = process.env[key];
-  return value && value.trim().length > 0 ? value : fallback;
+  if (value && value.trim().length > 0) {
+    return value;
+  }
+  if (mustFailFast) {
+    throw new Error(`${key} must be set in production`);
+  }
+  return fallback;
 };
 
-const databaseUrl = envValue("DATABASE_URL", fallbackDatabaseUrl);
-const betterAuthUrl = envValue("BETTER_AUTH_URL", "http://localhost:3000");
-const backendAudience = envValue("NEXT_PUBLIC_API_URL", "http://localhost:8001");
-const betterAuthSecret =
-  envValue("BETTER_AUTH_SECRET", process.env.SECRET_KEY && process.env.SECRET_KEY.trim().length > 0 ? process.env.SECRET_KEY : fallbackSecret);
+const databaseUrl = requireEnv("DATABASE_URL", fallbackDatabaseUrl);
+const betterAuthUrl = requireEnv("BETTER_AUTH_URL", "http://localhost:3000");
+const backendAudience = requireEnv("NEXT_PUBLIC_API_URL", "http://localhost:8001");
+const betterAuthSecret = ((): string => {
+  const explicit = process.env.BETTER_AUTH_SECRET;
+  if (explicit && explicit.trim().length > 0) {
+    return explicit;
+  }
+  const shared = process.env.SECRET_KEY;
+  if (shared && shared.trim().length > 0) {
+    return shared;
+  }
+  if (mustFailFast) {
+    throw new Error("BETTER_AUTH_SECRET (or SECRET_KEY) must be set in production");
+  }
+  return fallbackSecret;
+})();
 
 const jwtSecret = new TextEncoder().encode(betterAuthSecret);
 const defaultAuthPoolMax = 2;
