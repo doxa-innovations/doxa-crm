@@ -3,17 +3,35 @@ from __future__ import annotations
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from app.config import get_settings
+from app.utils.http import client_ip
+
 GLOBAL_RATE_LIMIT = "100/minute"
 AUTH_RATE_LIMIT = "10/minute"
 PUBLIC_PORTAL_RATE_LIMIT = "60/minute"
+
+
+def rate_limit_key(request: Request) -> str:
+    return client_ip(request) or "unknown"
+
+
+# Resolved outside the try block: a configuration error must fail fast rather
+# than silently degrade to the no-op limiter below.
+_storage_uri = get_settings().redis_url
 
 try:
     from slowapi import Limiter
     from slowapi.errors import RateLimitExceeded
     from slowapi.middleware import SlowAPIMiddleware
-    from slowapi.util import get_remote_address
 
-    limiter = Limiter(key_func=get_remote_address, default_limits=[GLOBAL_RATE_LIMIT])
+    limiter = Limiter(
+        key_func=rate_limit_key,
+        default_limits=[GLOBAL_RATE_LIMIT],
+        storage_uri=_storage_uri,
+        in_memory_fallback=[GLOBAL_RATE_LIMIT],
+        in_memory_fallback_enabled=True,
+        swallow_errors=True,
+    )
 except Exception:
     RateLimitExceeded = None
     SlowAPIMiddleware = None

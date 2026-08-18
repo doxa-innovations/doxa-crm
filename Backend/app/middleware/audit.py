@@ -14,6 +14,7 @@ from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
 from app.auth.jwt import decode_access_token
+from app.utils.http import client_ip
 
 WRITE_METHODS = {"POST", "PATCH", "DELETE"}
 SKIPPED_TABLES = {"audit_logs"}
@@ -40,7 +41,7 @@ class AuditContextMiddleware(BaseHTTPMiddleware):
             token = audit_context.set(
                 AuditContext(
                     user_id=_user_id_from_request(request),
-                    ip_address=_client_ip(request),
+                    ip_address=client_ip(request),
                     method=request.method.upper(),
                     path=request.url.path,
                 )
@@ -170,13 +171,6 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (list, tuple, set)):
         return [_json_safe(item) for item in value]
     return value
-
-
-def _client_ip(request: Request) -> str | None:
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",", 1)[0].strip()
-    return request.client.host if request.client else None
 
 
 def _user_id_from_request(request: Request) -> uuid.UUID | None:
