@@ -61,7 +61,7 @@ cd ../Frontend && node scripts/seed-auth-users.mjs  # dev only; refuses to run w
 cd ../Frontend && ADMIN_EMAIL=… ADMIN_PASSWORD=… node scripts/create-admin.mjs  # production admin
 ```
 
-Load tests: `python Backend/load_tests/api_load_test.py --base-url http://localhost:8001 --scenario health|crm-read|reports ...` (auth scenarios read `LOAD_TEST_TOKEN`).
+Load tests: `./.venv/bin/python load_tests/api_load_test.py --base-url http://localhost:8001 --scenario health|crm-read|reports ...` (auth scenarios read `LOAD_TEST_TOKEN`).
 
 Ports: frontend `3000`, API `8001` on the host but `8000` inside the container (`API_INTERNAL_URL=http://api:8000` for server-side calls), Meilisearch `7700`.
 

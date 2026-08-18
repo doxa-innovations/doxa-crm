@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import localFont from "next/font/local";
 import * as React from "react";
 
 import "@/app/globals.css";
@@ -10,8 +10,13 @@ export const metadata: Metadata = {
   description: "CRM frontend for Doxa sales, marketing, and customer success workflows.",
 };
 
-const inter = Inter({
-  subsets: ["latin"],
+// Vendored so production builds do not depend on Google Fonts being reachable.
+// Latin subset of the Inter variable font (weights 100-900); see app/fonts/OFL.txt.
+const inter = localFont({
+  src: "./fonts/inter-latin.woff2",
+  weight: "100 900",
+  style: "normal",
+  display: "swap",
   variable: "--font-inter",
 });
 

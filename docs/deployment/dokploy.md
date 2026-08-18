@@ -47,6 +47,10 @@ Frontend:
 - **Dockerfile Path:** `Frontend/Dockerfile`
 - **Docker Context Path:** `Frontend`
 
+The frontend build needs no outbound network beyond the npm registry: Inter is
+vendored at `Frontend/app/fonts/inter-latin.woff2` and loaded via `next/font/local`,
+so a network-restricted builder still succeeds.
+
 ## Environment matrix
 
 `Kind` is where the value must be set in Dokploy. **Build arg** means the *Build Time Arguments* field, not *Environment*; Dokploy does not expose runtime environment variables during a Dockerfile build, and Next.js inlines `NEXT_PUBLIC_*` at build time.
@@ -131,7 +135,6 @@ Then, in a browser: sign in at `https://crm.example.com`, load the dashboard, an
 ## Known limits and follow-ups
 
 - **`crm-api` must stay at 1 replica.** Migrations run in its entrypoint; concurrent replicas would race. Scaling requires moving migrations to a CI release phase that runs `alembic upgrade head` before triggering the deploy webhook.
-- **`next build` needs egress to `fonts.gstatic.com`.** `app/layout.tsx` uses `next/font/google` to fetch Inter at build time, so a builder without access to Google Fonts fails the build. If the Dokploy builder is network-restricted, vendor the font with `next/font/local` instead.
 - **Backups are not configured.** Dokploy supports scheduled S3 backups for its one-click databases; set them up before real data accumulates.
 - **Meilisearch has no domain**, which is correct — it should not be publicly reachable. Its master key must still be a real secret, not `local-development-master-key`.
 - **`ENVIRONMENT=test` bypasses production validation.** The API's fail-fast checks for CORS and placeholder secrets exempt `development` and `test`. Never set `ENVIRONMENT=test` on a deployed service.
