@@ -136,8 +136,20 @@ async function ensurePassword(pool, email, fullName, role) {
   );
 }
 
+function refuseInProduction() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "seed-auth-users.mjs creates demo accounts with a published password and must not run in production. Use create-admin.mjs instead.",
+    );
+  }
+}
+
 async function main() {
+  // Checked before loadEnv(), which throws if Frontend/.env is absent, and again
+  // after, in case the file itself sets NODE_ENV.
+  refuseInProduction();
   loadEnv();
+  refuseInProduction();
   const connectionString = requiredEnv("DATABASE_URL");
   const migrationPool = createPool(connectionString);
   const kysely = new Kysely({
