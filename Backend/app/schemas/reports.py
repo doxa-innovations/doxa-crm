@@ -79,6 +79,8 @@ class OverdueTaskRow(BaseModel):
     due_at: datetime
     owner_id: UUID
     assignee_name: str | None = None
+    linked_to: str | None = None
+    linked_type: str | None = None
 
 
 class SequencePerformanceRow(BaseModel):

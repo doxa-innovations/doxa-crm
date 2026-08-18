@@ -143,6 +143,8 @@ async def create_task(
     data = task_in.model_dump()
     data["owner_id"] = data.get("owner_id") or current_user.id
     task = Task(**data)
+    if task.status == TaskStatus.completed and task.completed_at is None:
+        task.completed_at = _now()
     db.add(task)
     await db.commit()
     await db.refresh(task)
@@ -151,12 +153,16 @@ async def create_task(
 
 async def update_task(db: AsyncSession, task_id: UUID, task_in: TaskUpdate) -> TaskResponse:
     task = await get_task_model(db, task_id)
+    updates = task_in.model_dump(exclude_unset=True)
 
-    for field_name, value in task_in.model_dump(exclude_unset=True).items():
+    for field_name, value in updates.items():
         setattr(task, field_name, value)
 
-    if task.status == TaskStatus.completed and task.completed_at is None:
-        task.completed_at = _now()
+    if "status" in updates:
+        if task.status == TaskStatus.completed and task.completed_at is None:
+            task.completed_at = _now()
+        elif task.status != TaskStatus.completed and "completed_at" not in updates:
+            task.completed_at = None
 
     await db.commit()
     await db.refresh(task)

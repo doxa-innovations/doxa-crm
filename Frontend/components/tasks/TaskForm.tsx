@@ -12,9 +12,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
-import type { Account, Contact, Deal, Lead, Task, TaskCreate, TaskPriority, TaskUpdate, User } from "@/types/api";
+import type { Account, ActivityType, Contact, Deal, Lead, StoredTaskStatus, Task, TaskCreate, TaskPriority, TaskUpdate, User } from "@/types/api";
 
 const priorities: TaskPriority[] = ["low", "medium", "high", "urgent"];
+const taskStatuses: StoredTaskStatus[] = ["pending", "in_progress", "completed", "cancelled"];
+const taskTypes: ActivityType[] = ["task", "call", "email", "meeting", "note"];
 
 const taskFormSchema = z
   .object({
@@ -26,6 +28,7 @@ const taskFormSchema = z
     lead_id: z.string().optional(),
     owner_id: z.string().optional(),
     priority: z.enum(["low", "medium", "high", "urgent"]),
+    status: z.enum(["pending", "in_progress", "completed", "cancelled"]),
     title: z.string().min(1, "Title is required."),
     type: z.enum(["task", "call", "email", "meeting", "note"]),
   })
@@ -70,6 +73,7 @@ function valuesFromTask(task?: Task | null): TaskFormValues {
     lead_id: task?.lead_id ?? "",
     owner_id: task?.owner_id ?? "",
     priority: task?.priority ?? "medium",
+    status: task?.status && task.status !== "overdue" ? task.status : "pending",
     title: task?.title ?? "",
     type: task?.type ?? "task",
   };
@@ -93,7 +97,9 @@ function buildPayload(values: TaskFormValues): TaskCreate | TaskUpdate {
     lead_id: values.lead_id || null,
     owner_id: values.owner_id || null,
     priority: values.priority,
+    status: values.status,
     title: values.title,
+    type: values.type,
   };
 }
 
@@ -169,11 +175,17 @@ export function TaskForm({ onOpenChange, onSaved, open, task }: TaskFormProps) {
               <Label htmlFor="task_description">Description</Label>
               <textarea className="min-h-24 w-full rounded-md border border-[var(--input)] px-3 py-2 text-sm" disabled={submitting} id="task_description" {...form.register("description")} />
             </div>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="task_type">Type</Label>
                 <select className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm" disabled={submitting} id="task_type" {...form.register("type")}>
-                  {["task", "call", "email", "meeting", "note"].map((type) => <option key={type} value={type}>{optionLabel(type)}</option>)}
+                  {taskTypes.map((type) => <option key={type} value={type}>{optionLabel(type)}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="task_status">Status</Label>
+                <select className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm" disabled={submitting} id="task_status" {...form.register("status")}>
+                  {taskStatuses.map((status) => <option key={status} value={status}>{optionLabel(status)}</option>)}
                 </select>
               </div>
               <div>

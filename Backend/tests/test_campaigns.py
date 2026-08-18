@@ -37,10 +37,12 @@ import app.services.campaigns as campaigns_service
 from app.schemas.campaigns import (
     CampaignEnrollmentResponse,
     CampaignEnrollRequest,
+    CampaignMetricResponse,
     CampaignMetricsResponse,
     CampaignResponse,
     CampaignStepResponse,
 )
+from app.utils import afromessage
 from app.workers import campaign_tasks
 
 
@@ -105,12 +107,16 @@ def make_user(user_id: UUID | None = None):
     )
 
 
-def make_campaign_response(campaign_id: UUID | None = None, owner_id: UUID | None = None) -> CampaignResponse:
+def make_campaign_response(
+    campaign_id: UUID | None = None,
+    owner_id: UUID | None = None,
+    campaign_type: CampaignType = CampaignType.email,
+) -> CampaignResponse:
     now = datetime.now(timezone.utc)
     return CampaignResponse(
         id=campaign_id or uuid4(),
         name="Spring Outreach",
-        type=CampaignType.email,
+        type=campaign_type,
         status=CampaignStatus.draft,
         start_date=date(2026, 6, 1),
         end_date=date(2026, 6, 30),
@@ -141,19 +147,35 @@ def make_enrollment_response(campaign_id: UUID, contact_id: UUID) -> CampaignEnr
     )
 
 
-def make_step_response(campaign_id: UUID, step_id: UUID | None = None, step_index: int = 0) -> CampaignStepResponse:
+def make_step_response(
+    campaign_id: UUID,
+    step_id: UUID | None = None,
+    step_index: int = 0,
+    channel: CampaignSequenceChannel = CampaignSequenceChannel.email,
+) -> CampaignStepResponse:
     now = datetime.now(timezone.utc)
     return CampaignStepResponse(
         id=step_id or uuid4(),
         campaign_id=campaign_id,
         step_index=step_index,
-        channel=CampaignSequenceChannel.email,
+        channel=channel,
         subject="Hello",
         body="Welcome",
         delay_days=1,
         variant="A",
         created_at=now,
         updated_at=now,
+    )
+
+
+def make_metric_response(campaign_id: UUID, contact_id: UUID, step_id: UUID | None = None) -> CampaignMetricResponse:
+    return CampaignMetricResponse(
+        id=uuid4(),
+        campaign_id=campaign_id,
+        contact_id=contact_id,
+        step_id=step_id,
+        event_type=CampaignMetricEventType.opened,
+        created_at=datetime.now(timezone.utc),
     )
 
 
@@ -174,10 +196,11 @@ def app():
 async def test_create_campaign_route(app, monkeypatch):
     owner = make_user()
     app.dependency_overrides[get_current_user] = lambda: owner
-    campaign_response = make_campaign_response(owner_id=owner.id)
+    campaign_response = make_campaign_response(owner_id=owner.id, campaign_type=CampaignType.sms)
 
     async def fake_create_campaign(db, campaign_in, current_user):
         assert campaign_in.name == "Spring Outreach"
+        assert campaign_in.type == CampaignType.sms
         assert current_user.id == owner.id
         return campaign_response
 
@@ -189,7 +212,7 @@ async def test_create_campaign_route(app, monkeypatch):
             "/api/v1/campaigns/",
             json={
                 "name": "Spring Outreach",
-                "type": "email",
+                "type": "sms",
                 "start_date": "2026-06-01",
                 "end_date": "2026-06-30",
                 "target_segment": {"tier": "smb"},
@@ -199,6 +222,7 @@ async def test_create_campaign_route(app, monkeypatch):
 
     assert response.status_code == 201
     assert response.json()["name"] == "Spring Outreach"
+    assert response.json()["type"] == "sms"
 
 
 @pytest.mark.asyncio
@@ -226,6 +250,38 @@ async def test_enroll_contacts_route(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_record_campaign_metric_route(app, monkeypatch):
+    campaign_id = uuid4()
+    contact_id = uuid4()
+    step_id = uuid4()
+    metric_response = make_metric_response(campaign_id, contact_id, step_id)
+
+    async def fake_record_campaign_metric(db, campaign_id_arg, metric_in):
+        assert campaign_id_arg == campaign_id
+        assert metric_in.contact_id == contact_id
+        assert metric_in.step_id == step_id
+        assert metric_in.event_type == CampaignMetricEventType.opened
+        return metric_response
+
+    monkeypatch.setattr(campaigns_router_module.campaigns_service, "record_campaign_metric", fake_record_campaign_metric)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            f"/api/v1/campaigns/{campaign_id}/metrics",
+            json={
+                "contact_id": str(contact_id),
+                "step_id": str(step_id),
+                "event_type": "opened",
+            },
+        )
+
+    assert response.status_code == 201
+    assert response.json()["event_type"] == "opened"
+    assert response.json()["contact_id"] == str(contact_id)
+
+
+@pytest.mark.asyncio
 async def test_enroll_contacts_is_idempotent_for_active_enrollment(monkeypatch):
     campaign_id = uuid4()
     contact_id = uuid4()
@@ -249,9 +305,12 @@ async def test_enroll_contacts_is_idempotent_for_active_enrollment(monkeypatch):
             FakeResult(value=contact),
         ]
     )
-    scheduled: list[UUID] = []
+    scheduled: list[tuple[UUID, int]] = []
 
-    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", scheduled.append)
+    def fake_schedule(enrollment_id: UUID, step_index: int):
+        scheduled.append((enrollment_id, step_index))
+
+    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", fake_schedule)
 
     result = await campaigns_service.enroll_contacts(
         db,
@@ -290,9 +349,12 @@ async def test_enroll_contacts_restarts_unsubscribed_enrollment(monkeypatch):
             FakeResult(value=contact),
         ]
     )
-    scheduled: list[UUID] = []
+    scheduled: list[tuple[UUID, int]] = []
 
-    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", scheduled.append)
+    def fake_schedule(enrollment_id: UUID, step_index: int):
+        scheduled.append((enrollment_id, step_index))
+
+    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", fake_schedule)
 
     result = await campaigns_service.enroll_contacts(
         db,
@@ -304,7 +366,7 @@ async def test_enroll_contacts_restarts_unsubscribed_enrollment(monkeypatch):
     assert enrollment.status == CampaignEnrollmentStatus.active
     assert enrollment.step_index == 0
     assert enrollment.enrolled_at > old_enrolled_at
-    assert scheduled == [enrollment.id]
+    assert scheduled == [(enrollment.id, 0)]
 
 
 @pytest.mark.asyncio
@@ -331,9 +393,12 @@ async def test_enroll_contacts_does_not_schedule_draft_campaign(monkeypatch):
             FakeResult(value=contact),
         ]
     )
-    scheduled: list[UUID] = []
+    scheduled: list[tuple[UUID, int]] = []
 
-    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", scheduled.append)
+    def fake_schedule(enrollment_id: UUID, step_index: int):
+        scheduled.append((enrollment_id, step_index))
+
+    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", fake_schedule)
 
     result = await campaigns_service.enroll_contacts(
         db,
@@ -347,15 +412,131 @@ async def test_enroll_contacts_does_not_schedule_draft_campaign(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_activate_campaign_schedules_every_active_enrollment(monkeypatch):
+    campaign_id = uuid4()
+    owner_id = uuid4()
+    enrollment_ids = [uuid4(), uuid4()]
+    now = datetime.now(timezone.utc)
+    campaign = SimpleNamespace(
+        id=campaign_id,
+        name="SMS Launch",
+        type=CampaignType.sms,
+        status=CampaignStatus.draft,
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 6, 30),
+        target_segment={},
+        budget=Decimal("1000.00"),
+        owner_id=owner_id,
+        created_at=now,
+        updated_at=now,
+    )
+    db = FakeSession(
+        [
+            FakeResult(value=campaign),
+            FakeResult(scalar_value=1),
+            FakeResult(scalar_value=len(enrollment_ids)),
+            FakeResult(values=[(enrollment_id, 0) for enrollment_id in enrollment_ids]),
+            FakeResult(value="Marketing Manager"),
+            FakeResult(scalar_value=len(enrollment_ids)),
+            FakeResult(rows=[]),
+        ]
+    )
+    scheduled: list[tuple[UUID, int]] = []
+
+    def fake_schedule(enrollment_id: UUID, step_index: int):
+        scheduled.append((enrollment_id, step_index))
+
+    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", fake_schedule)
+
+    result = await campaigns_service.activate_campaign(db, campaign_id)
+
+    assert result.status == CampaignStatus.active
+    assert result.enrollment_count == 2
+    assert campaign.status == CampaignStatus.active
+    assert db.committed is True
+    assert scheduled == [(enrollment_id, 0) for enrollment_id in enrollment_ids]
+
+
+@pytest.mark.asyncio
+async def test_restart_campaign_resets_enrollments_metrics_and_schedules_first_step(monkeypatch):
+    campaign_id = uuid4()
+    owner_id = uuid4()
+    now = datetime.now(timezone.utc)
+    campaign = SimpleNamespace(
+        id=campaign_id,
+        name="SMS Launch",
+        type=CampaignType.sms,
+        status=CampaignStatus.completed,
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 6, 30),
+        target_segment={},
+        budget=Decimal("1000.00"),
+        owner_id=owner_id,
+        created_at=now,
+        updated_at=now,
+    )
+    enrollments = [
+        SimpleNamespace(
+            id=uuid4(),
+            campaign_id=campaign_id,
+            contact_id=uuid4(),
+            enrolled_at=now,
+            step_index=2,
+            status=CampaignEnrollmentStatus.completed,
+            created_at=now,
+            updated_at=now,
+        ),
+        SimpleNamespace(
+            id=uuid4(),
+            campaign_id=campaign_id,
+            contact_id=uuid4(),
+            enrolled_at=now,
+            step_index=1,
+            status=CampaignEnrollmentStatus.active,
+            created_at=now,
+            updated_at=now,
+        ),
+    ]
+    db = FakeSession(
+        [
+            FakeResult(value=campaign),
+            FakeResult(scalar_value=1),
+            FakeResult(values=enrollments),
+            FakeResult(),
+            FakeResult(value="Marketing Manager"),
+            FakeResult(scalar_value=len(enrollments)),
+            FakeResult(rows=[]),
+        ]
+    )
+    scheduled: list[tuple[UUID, int]] = []
+
+    def fake_schedule(enrollment_id: UUID, step_index: int):
+        scheduled.append((enrollment_id, step_index))
+
+    monkeypatch.setattr(campaigns_service, "_schedule_campaign_step", fake_schedule)
+
+    result = await campaigns_service.restart_campaign(db, campaign_id)
+
+    assert result.status == CampaignStatus.active
+    assert result.metrics.sent == 0
+    assert campaign.status == CampaignStatus.active
+    assert {enrollment.status for enrollment in enrollments} == {CampaignEnrollmentStatus.active}
+    assert [enrollment.step_index for enrollment in enrollments] == [0, 0]
+    assert all(enrollment.enrolled_at > now for enrollment in enrollments)
+    assert scheduled == [(enrollment.id, 0) for enrollment in enrollments]
+
+
+@pytest.mark.asyncio
 async def test_sequence_step_crud_routes(app, monkeypatch):
     campaign_id = uuid4()
     step_id = uuid4()
-    created_step = make_step_response(campaign_id, step_id)
+    created_step = make_step_response(campaign_id, step_id, channel=CampaignSequenceChannel.sms)
     updated_step = make_step_response(campaign_id, step_id)
     updated_step.subject = "Updated subject"
 
     async def fake_add_step(db, campaign_id_arg, step_in):
         assert campaign_id_arg == campaign_id
+        assert step_in.channel == CampaignSequenceChannel.sms
         assert step_in.variant == "A"
         return created_step
 
@@ -377,7 +558,7 @@ async def test_sequence_step_crud_routes(app, monkeypatch):
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         create_response = await client.post(
             f"/api/v1/campaigns/{campaign_id}/steps",
-            json={"subject": "Hello", "body": "Welcome", "delay_days": 1, "variant": "A"},
+            json={"subject": "Hello", "body": "Welcome", "delay_days": 1, "variant": "A", "channel": "sms"},
         )
         update_response = await client.patch(
             f"/api/v1/campaigns/{campaign_id}/steps/{step_id}",
@@ -386,6 +567,7 @@ async def test_sequence_step_crud_routes(app, monkeypatch):
         delete_response = await client.delete(f"/api/v1/campaigns/{campaign_id}/steps/{step_id}")
 
     assert create_response.status_code == 201
+    assert create_response.json()["channel"] == "sms"
     assert create_response.json()["variant"] == "A"
     assert update_response.status_code == 200
     assert update_response.json()["subject"] == "Updated subject"
@@ -445,7 +627,7 @@ async def test_process_campaign_step_sends_email_records_metric_and_schedules_ne
         scheduled["countdown"] = countdown
 
     monkeypatch.setattr(campaign_tasks, "AsyncSessionLocal", lambda: db)
-    monkeypatch.setattr(campaign_tasks, "send_email_via_resend", fake_send_email)
+    monkeypatch.setattr(campaign_tasks, "send_email_via_mailersend", fake_send_email)
     monkeypatch.setattr(campaign_tasks.process_campaign_step, "apply_async", fake_apply_async)
 
     result = await campaign_tasks._process_campaign_step(enrollment_id)
@@ -454,8 +636,257 @@ async def test_process_campaign_step_sends_email_records_metric_and_schedules_ne
     assert enrollment.step_index == 1
     assert db.committed is True
     assert db.added[0].event_type == CampaignMetricEventType.sent
-    assert scheduled["args"] == [str(enrollment_id)]
+    assert scheduled["args"] == [str(enrollment_id), 1]
     assert scheduled["countdown"] == 172800
+
+
+@pytest.mark.asyncio
+async def test_process_campaign_step_skips_stale_scheduled_step(monkeypatch):
+    enrollment_id = uuid4()
+    enrollment = SimpleNamespace(
+        id=enrollment_id,
+        campaign_id=uuid4(),
+        contact_id=uuid4(),
+        step_index=1,
+        status=CampaignEnrollmentStatus.active,
+    )
+    db = FakeSession([FakeResult(value=enrollment)])
+
+    monkeypatch.setattr(campaign_tasks, "AsyncSessionLocal", lambda: db)
+
+    result = await campaign_tasks._process_campaign_step(enrollment_id, scheduled_step_index=0)
+
+    assert result == {
+        "status": "skipped",
+        "reason": "stale_scheduled_step",
+        "current_step_index": 1,
+        "scheduled_step_index": 0,
+    }
+    assert db.committed is False
+
+
+@pytest.mark.asyncio
+async def test_process_campaign_step_sends_sms_for_opted_in_contact(monkeypatch):
+    campaign_id = uuid4()
+    contact_id = uuid4()
+    enrollment_id = uuid4()
+    current_step_id = uuid4()
+    now = datetime.now(timezone.utc)
+    enrollment = SimpleNamespace(
+        id=enrollment_id,
+        campaign_id=campaign_id,
+        contact_id=contact_id,
+        step_index=0,
+        status=CampaignEnrollmentStatus.active,
+    )
+    contact = SimpleNamespace(
+        id=contact_id,
+        email="ada@example.com",
+        phone="+15555550123",
+        sms_opted_in_at=now,
+        sms_opted_out_at=None,
+    )
+    current_step = SimpleNamespace(
+        id=current_step_id,
+        campaign_id=campaign_id,
+        step_index=0,
+        channel=CampaignSequenceChannel.sms,
+        subject="Intro SMS",
+        body="Welcome by SMS",
+        delay_days=0,
+    )
+    db = FakeSession(
+        [
+            FakeResult(value=enrollment),
+            FakeResult(value=SimpleNamespace(id=campaign_id, status=CampaignStatus.active)),
+            FakeResult(value=contact),
+            FakeResult(value=current_step),
+            FakeResult(value=None),
+            FakeResult(value=None),
+        ]
+    )
+    sent: dict[str, str] = {}
+
+    async def fake_send_sms(to_phone, message):
+        sent["to"] = to_phone
+        sent["message"] = message
+        return {"id": "sms_123"}
+
+    monkeypatch.setattr(campaign_tasks, "AsyncSessionLocal", lambda: db)
+    monkeypatch.setattr(campaign_tasks, "send_sms_via_afromessage", fake_send_sms)
+
+    result = await campaign_tasks._process_campaign_step(enrollment_id)
+
+    assert result["status"] == "completed"
+    assert result["delivery_status"] == "sent"
+    assert sent == {"to": "+15555550123", "message": "Welcome by SMS"}
+    assert db.added[0].event_type == CampaignMetricEventType.sent
+
+
+@pytest.mark.asyncio
+async def test_process_campaign_step_skips_sms_without_opt_in(monkeypatch):
+    campaign_id = uuid4()
+    contact_id = uuid4()
+    enrollment_id = uuid4()
+    current_step_id = uuid4()
+    enrollment = SimpleNamespace(
+        id=enrollment_id,
+        campaign_id=campaign_id,
+        contact_id=contact_id,
+        step_index=0,
+        status=CampaignEnrollmentStatus.active,
+    )
+    contact = SimpleNamespace(
+        id=contact_id,
+        email="ada@example.com",
+        phone="+15555550123",
+        sms_opted_in_at=None,
+        sms_opted_out_at=None,
+    )
+    current_step = SimpleNamespace(
+        id=current_step_id,
+        campaign_id=campaign_id,
+        step_index=0,
+        channel=CampaignSequenceChannel.sms,
+        subject="Intro SMS",
+        body="Welcome by SMS",
+        delay_days=0,
+    )
+    db = FakeSession(
+        [
+            FakeResult(value=enrollment),
+            FakeResult(value=SimpleNamespace(id=campaign_id, status=CampaignStatus.active)),
+            FakeResult(value=contact),
+            FakeResult(value=current_step),
+            FakeResult(value=None),
+            FakeResult(value=None),
+        ]
+    )
+
+    async def fake_send_sms(to_phone, message):
+        raise AssertionError("SMS should not send without opt-in")
+
+    monkeypatch.setattr(campaign_tasks, "AsyncSessionLocal", lambda: db)
+    monkeypatch.setattr(campaign_tasks, "send_sms_via_afromessage", fake_send_sms)
+
+    result = await campaign_tasks._process_campaign_step(enrollment_id)
+
+    assert result["status"] == "completed"
+    assert result["delivery_status"] == "sms_not_opted_in"
+    assert db.added == []
+
+
+def test_afromessage_send_sms_retries_get_after_post_server_error(monkeypatch):
+    calls: list[tuple[str, dict[str, str] | None, dict[str, str] | None]] = []
+
+    class FakeResponse:
+        def __init__(self, status_code: int, payload=None):
+            self.status_code = status_code
+            self.text = "provider error" if status_code >= 400 else ""
+            self.payload = payload or {"acknowledge": "success"}
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                request = httpx.Request("POST", "https://api.afromessage.com/api/send")
+                response = httpx.Response(self.status_code, request=request, text=self.text)
+                raise httpx.HTTPStatusError("failed", request=request, response=response)
+
+        def json(self):
+            return self.payload
+
+    class FakeClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def request(self, method, url, headers, params=None, json=None):
+            calls.append((method, params, json))
+            return FakeResponse(500 if method == "POST" else 200)
+
+    monkeypatch.setattr(afromessage, "get_settings", lambda: SimpleNamespace(
+        afromessage_api_key="token",
+        afromessage_base_url="https://api.afromessage.com",
+        afromessage_method="POST",
+        afromessage_send_path="/api/send",
+        afromessage_identifier_id="identifier",
+        afromessage_sender_name=None,
+    ))
+    monkeypatch.setattr(afromessage.httpx, "Client", FakeClient)
+
+    assert afromessage.send_sms("+251900000000", "Hello") is True
+    assert calls == [
+        ("POST", None, {"to": "+251900000000", "message": "Hello", "from": "identifier"}),
+        ("GET", {"to": "+251900000000", "message": "Hello", "from": "identifier"}, None),
+    ]
+
+
+def test_afromessage_send_sms_omits_optional_identifier_when_unset(monkeypatch):
+    bodies: list[dict[str, str]] = []
+
+    class FakeClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def request(self, method, url, headers, params=None, json=None):
+            bodies.append(json or params)
+            request = httpx.Request(method, url)
+            return httpx.Response(200, request=request, json={"acknowledge": "success"})
+
+    monkeypatch.setattr(afromessage, "get_settings", lambda: SimpleNamespace(
+        afromessage_api_key="token",
+        afromessage_base_url="https://api.afromessage.com",
+        afromessage_method="POST",
+        afromessage_send_path="/api/send",
+        afromessage_identifier_id=None,
+        afromessage_sender_name=None,
+    ))
+    monkeypatch.setattr(afromessage.httpx, "Client", FakeClient)
+
+    assert afromessage.send_sms("+251900000000", "Hello") is True
+    assert bodies == [{"to": "+251900000000", "message": "Hello"}]
+
+
+def test_afromessage_send_sms_rejects_failed_acknowledgement(monkeypatch):
+    class FakeClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def request(self, method, url, headers, params=None, json=None):
+            request = httpx.Request(method, url)
+            return httpx.Response(
+                200,
+                request=request,
+                json={"acknowledge": "error", "response": {"message": "insufficient balance"}},
+            )
+
+    monkeypatch.setattr(afromessage, "get_settings", lambda: SimpleNamespace(
+        afromessage_api_key="token",
+        afromessage_base_url="https://api.afromessage.com",
+        afromessage_method="GET",
+        afromessage_send_path="/api/send",
+        afromessage_identifier_id="identifier",
+        afromessage_sender_name=None,
+    ))
+    monkeypatch.setattr(afromessage.httpx, "Client", FakeClient)
+
+    assert afromessage.send_sms("+251900000000", "Hello") is False
 
 
 @pytest.mark.asyncio

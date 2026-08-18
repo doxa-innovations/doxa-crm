@@ -4,7 +4,23 @@ import { authClient } from "@/lib/auth-client";
 import { normalizeRole, type DoxaUser } from "@/lib/auth-types";
 import { useAuthStore } from "@/stores/auth-store";
 
+let fastApiTokenRefreshPromise: Promise<string> | null = null;
+
 export async function refreshFastApiToken(): Promise<string> {
+  if (fastApiTokenRefreshPromise) {
+    return fastApiTokenRefreshPromise;
+  }
+
+  fastApiTokenRefreshPromise = refreshFastApiTokenOnce();
+
+  try {
+    return await fastApiTokenRefreshPromise;
+  } finally {
+    fastApiTokenRefreshPromise = null;
+  }
+}
+
+async function refreshFastApiTokenOnce(): Promise<string> {
   const { data, error } = await authClient.token();
 
   if (error) {

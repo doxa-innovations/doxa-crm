@@ -5,7 +5,6 @@ Next.js frontend for Doxa CRM. It provides the authenticated CRM workspace, Bett
 ## Tech Stack
 
 - Next.js 15 App Router
-- React 19
 - TypeScript strict mode
 - Tailwind CSS v4
 - BetterAuth
@@ -76,6 +75,7 @@ BETTER_AUTH_SECRET=<must-match-backend-SECRET_KEY>
 BETTER_AUTH_URL=http://localhost:3000
 NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
 DATABASE_URL=postgresql://...
+AUTH_DATABASE_URL=postgresql://...
 BETTER_AUTH_DB_POOL_MAX=2
 ```
 
@@ -83,6 +83,8 @@ Important:
 
 - `BETTER_AUTH_SECRET` must be exactly the same as backend `SECRET_KEY`
 - Frontend `DATABASE_URL` must be a normal `postgresql://` URL for the `pg` package
+- `AUTH_DATABASE_URL` is optional. When set, BetterAuth uses it instead of `DATABASE_URL`.
+- For Supabase auth login, use the direct DB URL or Session Pooler on port `5432`; do not use the Transaction Pooler on port `6543`
 - Backend `DATABASE_URL` uses `postgresql+asyncpg://`
 - `BETTER_AUTH_DB_POOL_MAX` should stay small for Supabase session-pool development
 - Do not put Meilisearch keys in the frontend env
@@ -220,8 +222,7 @@ Authenticated CRM pages:
 /settings
 /settings/users
 /settings/pipeline
-/settings/integrations
-/settings/billing
+/settings/sms
 ```
 
 Public page:
@@ -455,7 +456,7 @@ curl http://localhost:8001/health
 
 ### BetterAuth cannot connect to DB
 
-Frontend `DATABASE_URL` must start with:
+Frontend `DATABASE_URL` or `AUTH_DATABASE_URL` must start with:
 
 ```text
 postgresql://
@@ -466,6 +467,14 @@ Not:
 ```text
 postgresql+asyncpg://
 ```
+
+If the server log says `tenant/user ... not found`, the auth DB URL is usually pointed at the wrong Supabase pooler mode or project ref. For local Supabase auth, use the Session Pooler on port `5432`:
+
+```text
+postgresql://postgres.<project-ref>:<password>@<region>.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+Do not use the Transaction Pooler on port `6543` for BetterAuth login.
 
 ### Docker browser cannot reach backend
 

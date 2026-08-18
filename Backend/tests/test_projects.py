@@ -25,7 +25,7 @@ from app.dependencies import get_current_user, get_db
 from app.main import create_app
 from app.models import ProjectHealth, UserRoleName
 import app.routers.projects as projects_router_module
-from app.schemas.projects import ProjectPortalResponse, ProjectResponse
+from app.schemas.projects import MilestoneUpdate, ProjectPortalResponse, ProjectResponse
 from app.services import projects as projects_service
 from app.services.project_health import calculate_project_health
 
@@ -144,6 +144,30 @@ async def test_create_project_from_won_deal_route(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_archive_project_route_hides_project(app, monkeypatch):
+    owner = make_user(role=UserRoleName.customer_success)
+    app.dependency_overrides[get_current_user] = lambda: owner
+    project_id = uuid4()
+    archived_ids: list[UUID] = []
+
+    async def fake_archive_project(db, project_id_arg):
+        archived_ids.append(project_id_arg)
+
+    monkeypatch.setattr(
+        projects_router_module.projects_service,
+        "archive_project",
+        fake_archive_project,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(f"/api/v1/projects/{project_id}/archive")
+
+    assert response.status_code == 204
+    assert archived_ids == [project_id]
+
+
+@pytest.mark.asyncio
 async def test_complete_milestone_sets_completed_at_and_updates_health():
     now = datetime.now(timezone.utc)
     project_id = uuid4()
@@ -172,6 +196,43 @@ async def test_complete_milestone_sets_completed_at_and_updates_health():
     assert response.completed_at is not None
     assert milestone.completed_at is not None
     assert project.health == ProjectHealth.green
+    assert db.committed is True
+
+
+@pytest.mark.asyncio
+async def test_update_milestone_can_clear_completed_at_and_updates_health():
+    now = datetime.now(timezone.utc)
+    project_id = uuid4()
+    milestone_id = uuid4()
+    project = SimpleNamespace(id=project_id, health=ProjectHealth.green)
+    milestone = SimpleNamespace(
+        id=milestone_id,
+        project_id=project_id,
+        title="Kickoff",
+        due_date=date.today() - timedelta(days=1),
+        completed_at=now,
+        created_at=now,
+        updated_at=now,
+    )
+    db = FakeSession(
+        [
+            FakeResult(value=project),
+            FakeResult(value=milestone),
+            FakeResult(value=project),
+            FakeResult(values=[milestone]),
+        ]
+    )
+
+    response = await projects_service.update_milestone(
+        db,
+        project_id,
+        milestone_id,
+        MilestoneUpdate(completed_at=None),
+    )
+
+    assert response.completed_at is None
+    assert milestone.completed_at is None
+    assert project.health == ProjectHealth.red
     assert db.committed is True
 
 

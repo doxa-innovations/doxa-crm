@@ -169,12 +169,15 @@ async def list_leads(
     min_score: int | None = None,
     max_score: int | None = None,
     assigned_to: UUID | None = None,
+    exclude_converted: bool = False,
 ) -> list[LeadResponse]:
     offset, limit = _pagination(page, page_size)
     query = select(Lead).where(Lead.is_active.is_(True))
 
     if status_filter:
         query = query.where(Lead.status == status_filter)
+    elif exclude_converted:
+        query = query.where(Lead.status != LeadStatus.converted)
     if source:
         query = query.where(Lead.source == source)
     if score is not None:

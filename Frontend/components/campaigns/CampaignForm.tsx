@@ -14,14 +14,14 @@ import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHea
 import { api } from "@/lib/api";
 import type { Campaign, CampaignCreate, CampaignType, CampaignUpdate } from "@/types/api";
 
-const campaignTypes: CampaignType[] = ["email", "event", "social", "cold_call"];
+const campaignTypes: CampaignType[] = ["email", "sms", "event", "social", "cold_call"];
 
 const campaignFormSchema = z.object({
   budget: z.string().optional(),
   end_date: z.string().min(1, "End date is required."),
   name: z.string().min(1, "Name is required."),
   start_date: z.string().min(1, "Start date is required."),
-  type: z.enum(["email", "event", "social", "cold_call"]),
+  type: z.enum(["email", "sms", "event", "social", "cold_call"]),
 });
 
 type CampaignFormValues = z.infer<typeof campaignFormSchema>;

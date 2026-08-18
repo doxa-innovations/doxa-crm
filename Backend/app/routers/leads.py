@@ -38,6 +38,7 @@ async def list_leads(
     min_score: Annotated[int | None, Query(ge=0, le=100)] = None,
     max_score: Annotated[int | None, Query(ge=0, le=100)] = None,
     assigned_to: UUID | None = None,
+    exclude_converted: bool = False,
 ) -> list[LeadResponse]:
     if role_value(current_user) == SALES_REP:
         assigned_to = current_user.id
@@ -52,6 +53,7 @@ async def list_leads(
         min_score=min_score,
         max_score=max_score,
         assigned_to=assigned_to,
+        exclude_converted=exclude_converted,
     )
 
 

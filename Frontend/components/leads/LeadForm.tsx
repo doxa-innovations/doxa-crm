@@ -12,9 +12,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
-import type { Campaign, Lead, LeadCreate, LeadSource, LeadUpdate, User } from "@/types/api";
+import type { Campaign, Lead, LeadCreate, LeadSource, LeadStatus, LeadUpdate, User } from "@/types/api";
 
 const leadSources: LeadSource[] = ["website", "referral", "social", "cold_outreach", "event", "campaign"];
+const leadStatuses: LeadStatus[] = ["new", "contacted", "qualified", "disqualified"];
+const allLeadStatuses: LeadStatus[] = [...leadStatuses, "converted"];
 
 const leadFormSchema = z.object({
   assigned_to: z.string().optional(),
@@ -24,6 +26,7 @@ const leadFormSchema = z.object({
   full_name: z.string().min(1, "Full name is required."),
   phone: z.string().min(1, "Phone is required."),
   source: z.enum(leadSources),
+  status: z.enum(allLeadStatuses),
 });
 
 type LeadFormValues = z.infer<typeof leadFormSchema>;
@@ -44,6 +47,7 @@ function emptyValues(): LeadFormValues {
     full_name: "",
     phone: "",
     source: "website",
+    status: "new",
   };
 }
 
@@ -60,6 +64,7 @@ function valuesFromLead(lead?: Lead | null): LeadFormValues {
     full_name: lead.full_name,
     phone: lead.phone,
     source: lead.source,
+    status: lead.status,
   };
 }
 
@@ -67,7 +72,7 @@ function fieldError(message?: string) {
   return message ? <p className="mt-1 text-xs text-red-600">{message}</p> : null;
 }
 
-function buildPayload(values: LeadFormValues): LeadCreate | LeadUpdate {
+function buildPayload(values: LeadFormValues, lead?: Lead | null): LeadCreate | LeadUpdate {
   return {
     assigned_to: values.assigned_to || null,
     campaign_id: values.campaign_id || null,
@@ -76,6 +81,7 @@ function buildPayload(values: LeadFormValues): LeadCreate | LeadUpdate {
     full_name: values.full_name,
     phone: values.phone,
     source: values.source,
+    status: lead?.status === "converted" ? "converted" : values.status,
   };
 }
 
@@ -88,6 +94,7 @@ function sourceLabel(source: string): string {
 
 export function LeadForm({ lead, onOpenChange, onSaved, open }: LeadFormProps) {
   const queryClient = useQueryClient();
+  const isConvertedLead = lead?.status === "converted";
   const form = useForm<LeadFormValues>({
     defaultValues: valuesFromLead(lead),
     resolver: zodResolver(leadFormSchema),
@@ -112,7 +119,7 @@ export function LeadForm({ lead, onOpenChange, onSaved, open }: LeadFormProps) {
 
   const saveLead = useMutation({
     mutationFn: async (values: LeadFormValues) => {
-      const payload = buildPayload(values);
+      const payload = buildPayload(values, lead);
       const savedLead = lead
         ? await api.patch<Lead, LeadUpdate>(`/leads/${lead.id}`, payload)
         : await api.post<Lead, LeadCreate>("/leads/", payload as LeadCreate);
@@ -181,6 +188,22 @@ export function LeadForm({ lead, onOpenChange, onSaved, open }: LeadFormProps) {
               </div>
             </div>
 
+            <div>
+              <Label htmlFor="lead_status">Status</Label>
+              <select
+                className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950 disabled:bg-slate-50 disabled:text-slate-500"
+                disabled={submitting || isConvertedLead}
+                id="lead_status"
+                {...form.register("status")}
+              >
+                {(isConvertedLead ? allLeadStatuses : leadStatuses).map((status) => (
+                  <option key={status} value={status}>
+                    {sourceLabel(status)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="lead_assigned_to">Assigned To</Label>
@@ -218,7 +241,7 @@ export function LeadForm({ lead, onOpenChange, onSaved, open }: LeadFormProps) {
               </div>
             </div>
 
-            {lead?.status === "converted" ? (
+            {isConvertedLead ? (
               <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">Converted leads cannot move back to an earlier status.</div>
             ) : null}
 

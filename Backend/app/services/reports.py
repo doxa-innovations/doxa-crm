@@ -147,6 +147,8 @@ EXPORT_COLUMN_LABELS = {
     "expected_close": "Expected Close",
     "group": "Group",
     "health": "Health",
+    "linked_to": "Linked To",
+    "linked_type": "Linked Type",
     "month": "Month",
     "open_value": "Open Value",
     "owner_name": "Owner",
@@ -580,6 +582,20 @@ async def activity_volume(
 
 
 async def overdue_tasks(db: AsyncSession) -> list[OverdueTaskRow]:
+    linked_to = case(
+        (tasks.c.contact_id.is_not(None), func.concat(contacts.c.first_name, literal(" "), contacts.c.last_name)),
+        (tasks.c.deal_id.is_not(None), deals.c.title),
+        (tasks.c.lead_id.is_not(None), leads.c.full_name),
+        (tasks.c.account_id.is_not(None), accounts.c.name),
+        else_=None,
+    )
+    linked_type = case(
+        (tasks.c.contact_id.is_not(None), literal("Contact")),
+        (tasks.c.deal_id.is_not(None), literal("Deal")),
+        (tasks.c.lead_id.is_not(None), literal("Lead")),
+        (tasks.c.account_id.is_not(None), literal("Account")),
+        else_=None,
+    )
     query = (
         select(
             tasks.c.id,
@@ -587,8 +603,16 @@ async def overdue_tasks(db: AsyncSession) -> list[OverdueTaskRow]:
             tasks.c.due_at,
             tasks.c.owner_id,
             users.c.full_name.label("assignee_name"),
+            linked_to.label("linked_to"),
+            linked_type.label("linked_type"),
         )
-        .select_from(tasks.join(users, users.c.id == tasks.c.owner_id))
+        .select_from(
+            tasks.join(users, users.c.id == tasks.c.owner_id)
+            .outerjoin(contacts, contacts.c.id == tasks.c.contact_id)
+            .outerjoin(deals, deals.c.id == tasks.c.deal_id)
+            .outerjoin(leads, leads.c.id == tasks.c.lead_id)
+            .outerjoin(accounts, accounts.c.id == tasks.c.account_id)
+        )
         .where(
             tasks.c.due_at < datetime.now(timezone.utc),
             tasks.c.completed_at.is_(None),

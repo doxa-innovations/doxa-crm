@@ -158,6 +158,8 @@ export interface Contact {
   tags: string[];
   custom_fields: CustomFields;
   is_active: boolean;
+  sms_opted_in_at?: ISODateTime | null;
+  sms_opted_out_at?: ISODateTime | null;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
@@ -172,6 +174,8 @@ export interface ContactCreate {
   owner_id?: UUID | null;
   tags?: string[];
   custom_fields?: CustomFields;
+  sms_opted_in_at?: ISODateTime | null;
+  sms_opted_out_at?: ISODateTime | null;
 }
 
 export interface ContactUpdate {
@@ -185,6 +189,8 @@ export interface ContactUpdate {
   tags?: string[];
   custom_fields?: CustomFields;
   is_active?: boolean;
+  sms_opted_in_at?: ISODateTime | null;
+  sms_opted_out_at?: ISODateTime | null;
 }
 
 export interface ContactTimelineItem {
@@ -299,6 +305,28 @@ export interface PipelineStageUpdate {
   name?: string;
   probability?: number;
   order_index?: number;
+}
+
+export interface SmsSettings {
+  id: UUID;
+  api_key_set: boolean;
+  api_key_preview: string | null;
+  identifier_id: string | null;
+  sender_name: string | null;
+  base_url: string;
+  send_path: string;
+  method: string;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+}
+
+export interface SmsSettingsUpdate {
+  api_key?: string | null;
+  identifier_id?: string | null;
+  sender_name?: string | null;
+  base_url?: string;
+  send_path?: string;
+  method?: string;
 }
 
 export interface DealSummary {
@@ -446,6 +474,7 @@ export interface DealForecastResponse {
 
 export type ActivityType = "call" | "email" | "meeting" | "note" | "task";
 export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled" | "overdue";
+export type StoredTaskStatus = Exclude<TaskStatus, "overdue">;
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 
 export interface LinkedEntityIds {
@@ -519,7 +548,8 @@ export interface Task extends LinkedEntityIds {
 export interface TaskCreate extends LinkedEntityIds {
   title: string;
   description?: string | null;
-  status?: TaskStatus;
+  type?: ActivityType;
+  status?: StoredTaskStatus;
   priority?: TaskPriority;
   due_at?: ISODateTime | null;
   activity_id?: UUID | null;
@@ -529,7 +559,8 @@ export interface TaskCreate extends LinkedEntityIds {
 export interface TaskUpdate {
   title?: string;
   description?: string | null;
-  status?: TaskStatus;
+  type?: ActivityType;
+  status?: StoredTaskStatus;
   priority?: TaskPriority;
   due_at?: ISODateTime | null;
   completed_at?: ISODateTime | null;
@@ -545,10 +576,10 @@ export interface TaskSnoozeRequest {
   new_due: ISODateTime;
 }
 
-export type CampaignType = "email" | "event" | "social" | "cold_call";
+export type CampaignType = "email" | "sms" | "event" | "social" | "cold_call";
 export type CampaignStatus = "draft" | "active" | "paused" | "completed";
 export type CampaignEnrollmentStatus = "active" | "completed" | "unsubscribed";
-export type CampaignSequenceChannel = "email" | "call" | "task" | "social";
+export type CampaignSequenceChannel = "email" | "sms" | "call" | "task" | "social";
 export type CampaignMetricEventType = "sent" | "opened" | "clicked" | "replied" | "converted";
 
 export interface CampaignMetrics {
@@ -655,6 +686,12 @@ export interface CampaignMetric {
   step_id?: UUID | null;
   event_type: CampaignMetricEventType;
   created_at: ISODateTime;
+}
+
+export interface CampaignMetricCreate {
+  contact_id: UUID;
+  event_type: CampaignMetricEventType;
+  step_id?: UUID | null;
 }
 
 export type ProjectHealth = "green" | "yellow" | "red";
@@ -822,6 +859,8 @@ export interface OverdueTaskRow {
   due_at: ISODateTime;
   owner_id: UUID;
   assignee_name?: string | null;
+  linked_to?: string | null;
+  linked_type?: string | null;
 }
 
 export interface SequencePerformanceRow {

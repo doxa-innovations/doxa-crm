@@ -14,6 +14,7 @@ from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 class CampaignType(str, enum.Enum):
     email = "email"
+    sms = "sms"
     event = "event"
     social = "social"
     cold_call = "cold_call"
@@ -34,6 +35,7 @@ class CampaignEnrollmentStatus(str, enum.Enum):
 
 class CampaignSequenceChannel(str, enum.Enum):
     email = "email"
+    sms = "sms"
     call = "call"
     task = "task"
     social = "social"

@@ -124,6 +124,18 @@ Optional integrations:
 ```env
 RESEND_API_KEY=
 RESEND_FROM_EMAIL=crm@example.com
+MAILERSEND_API_KEY=
+MAILERSEND_FROM_EMAIL=no-reply@your-verified-domain.example
+MAILERSEND_FROM_NAME=Doxa CRM
+MAILERSEND_WEBHOOK_SECRET=
+AFROMESSAGE_API_KEY=
+# Optional AfroMessage Identifier ID used as the API "from" value.
+AFROMESSAGE_IDENTIFIER_ID=
+# Optional verified sender name.
+AFROMESSAGE_SENDER_NAME=
+AFROMESSAGE_BASE_URL=https://api.afromessage.com
+AFROMESSAGE_SEND_PATH=/api/send
+AFROMESSAGE_METHOD=POST
 R2_ENDPOINT_URL=
 R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
@@ -131,7 +143,28 @@ R2_BUCKET_NAME=
 R2_REGION_NAME=auto
 ```
 
-Use Resend for email delivery and R2-compatible storage for project documents when those features need real external services.
+Use Resend for general app emails, MailerSend for campaign email delivery and open/click tracking, AfroMessage for campaign SMS steps, and R2-compatible storage for project documents when those features need real external services.
+
+### SMS Settings
+
+The campaign SMS provider is managed from the CRM settings page and stored in the database.
+
+- UI: `/settings/sms`
+- API: `GET /api/v1/settings/sms/` and `PUT /api/v1/settings/sms/`
+- Storage: singleton row in the `sms_settings` table
+- Behavior: database values are used first, and blank fields fall back to the values in `Backend/.env`
+
+The stored SMS credentials are used by the campaign worker when it sends SMS steps.
+
+### Campaign Email Tracking
+
+Campaign emails are sent through MailerSend and tracked through the MailerSend activity webhook.
+
+- Sending uses the configured `MAILERSEND_API_KEY` and `MAILERSEND_FROM_EMAIL`
+- The backend webhook endpoint is `POST /api/v1/webhooks/mailersend`
+- MailerSend must be configured to call that publicly reachable HTTPS endpoint
+- Open and click events are recorded automatically when MailerSend sends the webhook payload
+- Reply tracking is not automatic yet; it would need inbound reply processing or manual metric writes
 
 ## Run Everything With Docker
 

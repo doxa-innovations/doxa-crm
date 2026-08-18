@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,8 @@ from app.schemas.campaigns import (
     CampaignCreate,
     CampaignEnrollmentResponse,
     CampaignEnrollRequest,
+    CampaignMetricCreate,
+    CampaignMetricResponse,
     CampaignMetricsResponse,
     CampaignResponse,
     CampaignStepCreate,
@@ -169,7 +171,7 @@ async def activate_campaign(db: AsyncSession, campaign_id: UUID) -> CampaignResp
     campaign = await get_campaign_model(db, campaign_id)
     step_count = await _count_steps(db, campaign_id)
     enrollment_count = await _count_active_enrollments(db, campaign_id)
-    active_enrollment_ids = await _active_enrollment_ids(db, campaign_id)
+    active_enrollment_items = await _active_enrollment_schedule_items(db, campaign_id)
 
     if step_count == 0 or enrollment_count == 0:
         raise HTTPException(
@@ -181,8 +183,36 @@ async def activate_campaign(db: AsyncSession, campaign_id: UUID) -> CampaignResp
     await db.commit()
     await db.refresh(campaign)
 
-    for enrollment_id in active_enrollment_ids:
-        _schedule_campaign_step(enrollment_id)
+    for enrollment_id, step_index in active_enrollment_items:
+        _schedule_campaign_step(enrollment_id, step_index)
+
+    return await build_campaign_response(db, campaign)
+
+
+async def restart_campaign(db: AsyncSession, campaign_id: UUID) -> CampaignResponse:
+    campaign = await get_campaign_model(db, campaign_id)
+    step_count = await _count_steps(db, campaign_id)
+    enrollments = await _restartable_enrollments(db, campaign_id)
+
+    if step_count == 0 or not enrollments:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Campaign requires at least one sequence step and one enrolled contact before restart",
+        )
+
+    restarted_at = datetime.now(timezone.utc)
+    for enrollment in enrollments:
+        enrollment.status = CampaignEnrollmentStatus.active
+        enrollment.step_index = 0
+        enrollment.enrolled_at = restarted_at
+
+    await db.execute(delete(CampaignMetric).where(CampaignMetric.campaign_id == campaign_id))
+    campaign.status = CampaignStatus.active
+    await db.commit()
+    await db.refresh(campaign)
+
+    for enrollment in enrollments:
+        _schedule_campaign_step(enrollment.id, 0)
 
     return await build_campaign_response(db, campaign)
 
@@ -212,11 +242,21 @@ async def _count_active_enrollments(db: AsyncSession, campaign_id: UUID) -> int:
     return int(result.scalar_one() or 0)
 
 
-async def _active_enrollment_ids(db: AsyncSession, campaign_id: UUID) -> list[UUID]:
+async def _active_enrollment_schedule_items(db: AsyncSession, campaign_id: UUID) -> list[tuple[UUID, int]]:
     result = await db.execute(
-        select(CampaignEnrollment.id).where(
+        select(CampaignEnrollment.id, CampaignEnrollment.step_index).where(
             CampaignEnrollment.campaign_id == campaign_id,
             CampaignEnrollment.status == CampaignEnrollmentStatus.active,
+        )
+    )
+    return [(enrollment_id, int(step_index or 0)) for enrollment_id, step_index in result.all()]
+
+
+async def _restartable_enrollments(db: AsyncSession, campaign_id: UUID) -> list[CampaignEnrollment]:
+    result = await db.execute(
+        select(CampaignEnrollment).where(
+            CampaignEnrollment.campaign_id == campaign_id,
+            CampaignEnrollment.status != CampaignEnrollmentStatus.unsubscribed,
         )
     )
     return list(result.scalars().all())
@@ -306,16 +346,16 @@ async def enroll_contacts(
 
     if campaign.status == CampaignStatus.active:
         for enrollment_id in enrollment_ids_to_schedule:
-            _schedule_campaign_step(enrollment_id)
+            _schedule_campaign_step(enrollment_id, 0)
 
     return [await build_enrollment_response(db, enrollment) for enrollment in enrollments]
 
 
-def _schedule_campaign_step(enrollment_id: UUID) -> None:
+def _schedule_campaign_step(enrollment_id: UUID, step_index: int) -> None:
     try:
         from app.workers.campaign_tasks import process_campaign_step
 
-        process_campaign_step.apply_async(args=[str(enrollment_id)], countdown=0)
+        process_campaign_step.apply_async(args=[str(enrollment_id), step_index], countdown=0)
     except Exception:
         logger.warning(
             "Campaign enrollment saved but step processing could not be queued",
@@ -347,6 +387,86 @@ async def unsubscribe_contact(
 async def get_campaign_metrics(db: AsyncSession, campaign_id: UUID) -> CampaignMetricsResponse:
     await get_campaign_model(db, campaign_id)
     return await aggregate_campaign_metrics(db, campaign_id)
+
+
+async def record_campaign_metric(
+    db: AsyncSession,
+    campaign_id: UUID,
+    metric_in: CampaignMetricCreate,
+) -> CampaignMetricResponse:
+    await get_campaign_model(db, campaign_id)
+
+    enrollment_result = await db.execute(
+        select(CampaignEnrollment).where(
+            CampaignEnrollment.campaign_id == campaign_id,
+            CampaignEnrollment.contact_id == metric_in.contact_id,
+        )
+    )
+    if enrollment_result.scalar_one_or_none() is None:
+        raise _not_found("Campaign enrollment")
+
+    if metric_in.step_id is not None:
+        await get_step_model(db, campaign_id, metric_in.step_id)
+
+    metric = CampaignMetric(
+        campaign_id=campaign_id,
+        contact_id=metric_in.contact_id,
+        step_id=metric_in.step_id,
+        event_type=metric_in.event_type,
+    )
+    db.add(metric)
+    await db.commit()
+    await db.refresh(metric)
+    return CampaignMetricResponse.model_validate(metric)
+
+
+async def record_email_engagement(
+    db: AsyncSession,
+    *,
+    campaign_id: UUID,
+    contact_id: UUID,
+    step_id: UUID,
+    event_type: CampaignMetricEventType,
+) -> bool:
+    """Record an open/click metric from a provider webhook, deduplicated.
+
+    Returns True when a new metric row was created, False when it was a
+    duplicate or the referenced campaign/enrollment no longer exists.
+    """
+    campaign = await db.execute(select(Campaign.id).where(Campaign.id == campaign_id))
+    if campaign.scalar_one_or_none() is None:
+        return False
+
+    enrollment = await db.execute(
+        select(CampaignEnrollment.id).where(
+            CampaignEnrollment.campaign_id == campaign_id,
+            CampaignEnrollment.contact_id == contact_id,
+        )
+    )
+    if enrollment.scalar_one_or_none() is None:
+        return False
+
+    existing = await db.execute(
+        select(CampaignMetric.id).where(
+            CampaignMetric.campaign_id == campaign_id,
+            CampaignMetric.contact_id == contact_id,
+            CampaignMetric.step_id == step_id,
+            CampaignMetric.event_type == event_type,
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        return False
+
+    db.add(
+        CampaignMetric(
+            campaign_id=campaign_id,
+            contact_id=contact_id,
+            step_id=step_id,
+            event_type=event_type,
+        )
+    )
+    await db.commit()
+    return True
 
 
 async def list_steps(db: AsyncSession, campaign_id: UUID) -> list[CampaignStepResponse]:

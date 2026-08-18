@@ -1,10 +1,10 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, FileText, Loader2, UploadCloud, XCircle } from "lucide-react";
+import { CheckCircle2, Download, FileText, Loader2, UploadCloud, XCircle } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import type { LeadImportSummary } from "@/types/api";
@@ -95,7 +95,8 @@ export function ImportModal({ onOpenChange, open }: ImportModalProps) {
         </DialogHeader>
 
         <div className="grid gap-5">
-          <a className="text-sm font-medium text-[#2563EB] hover:underline" download="lead-import-template.csv" href={templateHref}>
+          <a className={buttonVariants({ className: "w-fit", variant: "outline" })} download="lead-import-template.csv" href={templateHref}>
+            <Download className="h-4 w-4" aria-hidden="true" />
             Download CSV template
           </a>
 

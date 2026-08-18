@@ -150,6 +150,49 @@ def app():
 
 
 @pytest.mark.asyncio
+async def test_list_leads_route_supports_excluding_converted(app, monkeypatch):
+    current_user = make_user(role=UserRoleName.sales_manager)
+    app.dependency_overrides[get_current_user] = lambda: current_user
+    lead_response = make_lead_response(assigned_to=current_user.id)
+
+    async def fake_list_leads(db, **kwargs):
+        assert kwargs["status_filter"] is None
+        assert kwargs["exclude_converted"] is True
+        return [lead_response]
+
+    monkeypatch.setattr(leads_router_module.leads_service, "list_leads", fake_list_leads)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/leads/?exclude_converted=true")
+
+    assert response.status_code == 200
+    assert response.json()[0]["id"] == str(lead_response.id)
+
+
+@pytest.mark.asyncio
+async def test_list_leads_route_keeps_converted_status_filter_available(app, monkeypatch):
+    current_user = make_user(role=UserRoleName.sales_manager)
+    app.dependency_overrides[get_current_user] = lambda: current_user
+    lead_response = make_lead_response(assigned_to=current_user.id)
+    lead_response.status = LeadStatus.converted
+
+    async def fake_list_leads(db, **kwargs):
+        assert kwargs["status_filter"] == LeadStatus.converted
+        assert kwargs["exclude_converted"] is True
+        return [lead_response]
+
+    monkeypatch.setattr(leads_router_module.leads_service, "list_leads", fake_list_leads)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/leads/?status=converted&exclude_converted=true")
+
+    assert response.status_code == 200
+    assert response.json()[0]["status"] == "converted"
+
+
+@pytest.mark.asyncio
 async def test_create_lead_route(app, monkeypatch):
     current_user = make_user()
     app.dependency_overrides[get_current_user] = lambda: current_user

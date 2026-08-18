@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, CheckCircle2, ChevronDown, ChevronRight, Edit, FolderKanban, Mail, Phone, Plus, Trophy, XCircle } from "lucide-react";
+import { Activity, CheckCircle2, ChevronDown, ChevronRight, Edit, FolderKanban, Mail, Phone, Plus, Trash2, Trophy, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -11,6 +11,7 @@ import { AddCollaboratorDialog } from "@/components/deals/AddCollaboratorDialog"
 import { DealForm } from "@/components/deals/DealForm";
 import { LostReasonModal } from "@/components/deals/LostReasonModal";
 import { ActivityTimeline, type ActivityTimelineItem } from "@/components/shared/ActivityTimeline";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -59,6 +60,7 @@ export function DealDetailClient({ dealId }: DealDetailClientProps) {
   const [editOpen, setEditOpen] = useState(false);
   const [collaboratorOpen, setCollaboratorOpen] = useState(false);
   const [lostOpen, setLostOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const dealQuery = useQuery({
     queryFn: () => api.get<DealDetailResponse>(`/deals/${dealId}`),
@@ -92,6 +94,17 @@ export function DealDetailClient({ dealId }: DealDetailClientProps) {
     onSuccess: (project) => {
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
       router.push(`/projects/${project.id}`);
+    },
+  });
+  const deleteDeal = useMutation({
+    mutationFn: () => api.delete<void>(`/deals/${dealId}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["deals"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      router.push("/deals");
+    },
+    meta: {
+      successMessage: "Deal deleted",
     },
   });
 
@@ -175,6 +188,10 @@ export function DealDetailClient({ dealId }: DealDetailClientProps) {
                 <Button onClick={() => setEditOpen(true)} type="button" variant="outline">
                   <Edit className="h-4 w-4" aria-hidden="true" />
                   Edit Deal
+                </Button>
+                <Button disabled={deleteDeal.isPending} onClick={() => setDeleteOpen(true)} type="button" variant="destructive">
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  Delete Deal
                 </Button>
               </>
             ) : null}
@@ -309,6 +326,17 @@ export function DealDetailClient({ dealId }: DealDetailClientProps) {
       </div>
 
       {canWriteDeals ? <LostReasonModal isPending={markLost.isPending} onCancel={() => setLostOpen(false)} onConfirm={(reason) => markLost.mutate(reason)} open={lostOpen} /> : null}
+      {canWriteDeals ? (
+        <ConfirmDialog
+          confirmLabel="Delete Deal"
+          description="This will hide the deal from active views and search. The database record is kept for history."
+          isPending={deleteDeal.isPending}
+          onConfirm={() => deleteDeal.mutate()}
+          onOpenChange={setDeleteOpen}
+          open={deleteOpen}
+          title="Delete this deal?"
+        />
+      ) : null}
       {canWriteActivities ? (
         <ActivityForm
           initialLink={{ id: deal.id, label: deal.title, type: "deal" }}

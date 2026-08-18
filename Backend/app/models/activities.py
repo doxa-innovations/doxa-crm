@@ -89,6 +89,12 @@ class Task(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    type: Mapped[ActivityType] = mapped_column(
+        SQLEnum(ActivityType, name="activity_type"),
+        nullable=False,
+        default=ActivityType.task,
+        server_default=ActivityType.task.value,
+    )
     status: Mapped[TaskStatus] = mapped_column(
         SQLEnum(TaskStatus, name="task_status"),
         nullable=False,

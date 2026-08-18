@@ -10,6 +10,7 @@ from app.routers.pipelines import router as pipelines_router
 from app.routers.projects import portal_router, router as projects_router
 from app.routers.reports import router as reports_router
 from app.routers.search import router as search_router
+from app.routers.sms_settings import router as sms_settings_router
 from app.routers.tasks import router as tasks_router
 from app.routers.users import router as users_router
 from app.routers.webhooks import router as webhooks_router
@@ -26,6 +27,7 @@ api_router.include_router(portal_router)
 api_router.include_router(projects_router)
 api_router.include_router(reports_router)
 api_router.include_router(search_router)
+api_router.include_router(sms_settings_router)
 api_router.include_router(tasks_router)
 api_router.include_router(users_router)
 api_router.include_router(webhooks_router)

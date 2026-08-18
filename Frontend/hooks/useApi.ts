@@ -70,6 +70,7 @@ export interface LeadsParams extends PageParams {
   min_score?: number;
   max_score?: number;
   assigned_to?: UUID;
+  exclude_converted?: boolean;
 }
 
 export interface ContactsParams extends PageParams {

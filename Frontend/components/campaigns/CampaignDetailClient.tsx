@@ -2,7 +2,25 @@
 
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, GripVertical, MailCheck, MousePointerClick, Pause, Play, Plus, Reply, Target, Trash2 } from "lucide-react";
+import {
+  CheckCircle,
+  GripVertical,
+  ListChecks,
+  Mail,
+  MailCheck,
+  MessageCircle,
+  MousePointerClick,
+  Pause,
+  PhoneCall,
+  Play,
+  Plus,
+  Reply,
+  RotateCcw,
+  Share2,
+  Target,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
@@ -22,7 +40,11 @@ import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import type {
   Campaign,
   CampaignEnrollment,
+  CampaignMetric,
+  CampaignMetricCreate,
+  CampaignMetricEventType,
   CampaignMetrics,
+  CampaignSequenceChannel,
   CampaignSequenceStep,
   CampaignStepsReorderRequest,
   CampaignUpdate,
@@ -33,6 +55,49 @@ type CampaignTab = "overview" | "sequence" | "enrollments" | "metrics";
 interface CampaignDetailClientProps {
   campaignId: string;
 }
+
+const metricEvents: Array<{ eventType: CampaignMetricEventType; label: string }> = [
+  { eventType: "sent", label: "Sent" },
+  { eventType: "opened", label: "Opened" },
+  { eventType: "clicked", label: "Clicked" },
+  { eventType: "replied", label: "Replied" },
+  { eventType: "converted", label: "Converted" },
+];
+
+const channelMeta: Record<
+  CampaignSequenceChannel,
+  {
+    className: string;
+    icon: LucideIcon;
+    label: string;
+  }
+> = {
+  call: {
+    className: "bg-violet-50 text-violet-700",
+    icon: PhoneCall,
+    label: "Call",
+  },
+  email: {
+    className: "bg-blue-50 text-blue-700",
+    icon: Mail,
+    label: "Email",
+  },
+  sms: {
+    className: "bg-emerald-50 text-emerald-700",
+    icon: MessageCircle,
+    label: "SMS",
+  },
+  social: {
+    className: "bg-amber-50 text-amber-700",
+    icon: Share2,
+    label: "Social",
+  },
+  task: {
+    className: "bg-slate-100 text-slate-700",
+    icon: ListChecks,
+    label: "Task",
+  },
+};
 
 function optionLabel(value: string): string {
   return value
@@ -85,6 +150,9 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
   const [editingStep, setEditingStep] = useState<CampaignSequenceStep | null>(null);
   const [contactSelectOpen, setContactSelectOpen] = useState(false);
   const [deleteCampaignOpen, setDeleteCampaignOpen] = useState(false);
+  const [restartCampaignOpen, setRestartCampaignOpen] = useState(false);
+  const [metricContactId, setMetricContactId] = useState("");
+  const [metricStepId, setMetricStepId] = useState("");
 
   const campaignQuery = useQuery({
     queryFn: () => api.get<Campaign>(`/campaigns/${campaignId}`),
@@ -120,6 +188,16 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       void queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", campaignId] });
+      void queryClient.invalidateQueries({ queryKey: ["campaigns", "metrics", campaignId] });
+    },
+  });
+  const restartCampaign = useMutation({
+    mutationFn: () => api.post<Campaign>(`/campaigns/${campaignId}/restart`),
+    onSuccess: () => {
+      setRestartCampaignOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      void queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", campaignId] });
+      void queryClient.invalidateQueries({ queryKey: ["campaigns", "enrollments", campaignId] });
       void queryClient.invalidateQueries({ queryKey: ["campaigns", "metrics", campaignId] });
     },
   });
@@ -169,10 +247,31 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
   const hasMetrics = Boolean(metrics && Object.values(metrics).some((value) => value > 0));
   const hasSteps = steps.length > 0;
   const hasActiveEnrollments = enrollments.some((enrollment) => enrollment.status === "active");
+  const hasRestartableEnrollments = enrollments.some((enrollment) => enrollment.status !== "unsubscribed");
   const canActivate = hasSteps && hasActiveEnrollments && campaign?.status !== "active" && campaign?.status !== "completed";
+  const canRestart = Boolean(campaign && campaign.status !== "draft" && hasSteps && hasRestartableEnrollments);
   const disabledActivationReason = !hasSteps ? "Add at least one sequence step before activating." : !hasActiveEnrollments ? "Enroll active contacts before activating." : "";
+  const disabledRestartReason = !hasSteps ? "Add at least one sequence step before restarting." : !hasRestartableEnrollments ? "Enroll contacts before restarting." : "";
   const sortedSteps = [...steps].sort((left, right) => left.step_index - right.step_index);
   const variantComparison = useMemo(() => variantRows(steps), [steps]);
+  const metricContactOptions = enrollments.filter((enrollment) => enrollment.status !== "unsubscribed");
+  const metricContactIds = new Set(metricContactOptions.map((enrollment) => enrollment.contact_id));
+  const activeMetricContactId = metricContactIds.has(metricContactId) ? metricContactId : metricContactOptions[0]?.contact_id ?? "";
+  const metricStepIds = new Set(sortedSteps.map((step) => step.id));
+  const activeMetricStepId = metricStepIds.has(metricStepId) ? metricStepId : "";
+  const recordMetric = useMutation({
+    mutationFn: (eventType: CampaignMetricEventType) =>
+      api.post<CampaignMetric, CampaignMetricCreate>(`/campaigns/${campaignId}/metrics`, {
+        contact_id: activeMetricContactId,
+        event_type: eventType,
+        step_id: activeMetricStepId || null,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      void queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", campaignId] });
+      void queryClient.invalidateQueries({ queryKey: ["campaigns", "metrics", campaignId] });
+    },
+  });
 
   function onDragEnd(result: DropResult) {
     if (!canWriteCampaigns) {
@@ -289,9 +388,11 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
             {canWriteCampaigns ? (
               <div className="mt-5">
                 {campaign.status === "completed" ? (
-                  <p className="text-sm font-medium text-[#64748B]">This campaign is completed.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
+                  <p className="text-sm font-medium text-[#64748B]">This campaign is completed. Restart it to send the sequence from step 1 again.</p>
+                ) : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {campaign.status !== "completed" ? (
+                    <>
                     {campaign.status === "active" ? (
                       <Button disabled={pauseCampaign.isPending} onClick={() => pauseCampaign.mutate()} type="button" variant="outline">
                         <Pause className="h-4 w-4" aria-hidden="true" />
@@ -305,15 +406,25 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
                         </Button>
                       </div>
                     )}
-                    {(campaign.status === "active" || campaign.status === "paused") ? (
-                      <Button disabled={completeCampaign.isPending} onClick={() => completeCampaign.mutate()} type="button" variant="outline">
-                        <CheckCircle className="h-4 w-4" aria-hidden="true" />
-                        Mark Complete
+                    </>
+                  ) : null}
+                  {(campaign.status === "active" || campaign.status === "paused") ? (
+                    <Button disabled={completeCampaign.isPending} onClick={() => completeCampaign.mutate()} type="button" variant="outline">
+                      <CheckCircle className="h-4 w-4" aria-hidden="true" />
+                      Mark Complete
+                    </Button>
+                  ) : null}
+                  {campaign.status !== "draft" ? (
+                    <div className="inline-flex" title={!canRestart ? disabledRestartReason : undefined}>
+                      <Button disabled={!canRestart || restartCampaign.isPending} onClick={() => setRestartCampaignOpen(true)} type="button" variant="outline">
+                        <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                        Restart
                       </Button>
-                    ) : null}
-                  </div>
-                )}
+                    </div>
+                  ) : null}
+                </div>
                 {!canActivate && campaign.status !== "active" && campaign.status !== "completed" ? <p className="mt-2 text-xs text-amber-700">{disabledActivationReason}</p> : null}
+                {!canRestart && campaign.status !== "draft" ? <p className="mt-2 text-xs text-amber-700">{disabledRestartReason}</p> : null}
               </div>
             ) : null}
           </section>
@@ -324,7 +435,7 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
               <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-[#64748B]">
                   <MailCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                  Sent emails
+                  Sent messages
                 </div>
                 <p className="mt-1 text-2xl font-semibold text-[#0F2444]">{metrics?.sent ?? 0}</p>
               </div>
@@ -362,7 +473,7 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
         <section className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-semibold text-[#0F2444]">Email Sequence</h2>
+              <h2 className="text-base font-semibold text-[#0F2444]">Campaign Sequence</h2>
               <p className="mt-1 text-sm text-[#64748B]">Drag steps to reorder. Reorder saves on drop.</p>
             </div>
             {canWriteCampaigns ? (
@@ -379,7 +490,11 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
               <Droppable droppableId="campaign-steps" isDropDisabled={!canWriteCampaigns}>
                 {(provided) => (
                   <div className="grid gap-3" ref={provided.innerRef} {...provided.droppableProps}>
-                    {sortedSteps.map((step, index) => (
+                    {sortedSteps.map((step, index) => {
+                      const meta = channelMeta[step.channel] ?? channelMeta.email;
+                      const ChannelIcon = meta.icon;
+
+                      return (
                       <Draggable draggableId={step.id} index={index} isDragDisabled={!canWriteCampaigns} key={step.id}>
                         {(draggableProvided) => {
                           const { style, ...draggableProps } = draggableProvided.draggableProps;
@@ -399,6 +514,10 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
                                   <div className="min-w-0">
                                     <div className="flex flex-wrap items-center gap-2">
                                       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-[#0F2444]">Step {index + 1}</span>
+                                      <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold", meta.className)}>
+                                        <ChannelIcon className="h-3 w-3" aria-hidden="true" />
+                                        {meta.label}
+                                      </span>
                                       <span className="text-xs font-medium text-[#64748B]">Delay: {step.delay_days} days after previous</span>
                                       {step.variant ? <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">Variant {step.variant}</span> : null}
                                     </div>
@@ -419,7 +538,8 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
                           );
                         }}
                       </Draggable>
-                    ))}
+                      );
+                    })}
                     {provided.placeholder}
                   </div>
                 )}
@@ -470,6 +590,63 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
       {tab === "metrics" ? (
         <section className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
           <h2 className="text-base font-semibold text-[#0F2444]">Delivery Metrics</h2>
+          {canWriteCampaigns ? (
+            <div className="mt-5 grid gap-3 rounded-xl border border-slate-200 p-4 lg:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_auto] lg:items-end">
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-normal text-[#64748B]" htmlFor="metric_contact">
+                  Contact
+                </label>
+                <select
+                  className="mt-1 h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
+                  disabled={metricContactOptions.length === 0 || recordMetric.isPending}
+                  id="metric_contact"
+                  onChange={(event) => setMetricContactId(event.target.value)}
+                  value={activeMetricContactId}
+                >
+                  {metricContactOptions.length === 0 ? <option value="">No enrolled contacts</option> : null}
+                  {metricContactOptions.map((enrollment) => (
+                    <option key={enrollment.id} value={enrollment.contact_id}>
+                      {enrollment.contact_name ?? enrollment.contact_email ?? "Contact"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-normal text-[#64748B]" htmlFor="metric_step">
+                  Step
+                </label>
+                <select
+                  className="mt-1 h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
+                  disabled={recordMetric.isPending}
+                  id="metric_step"
+                  onChange={(event) => setMetricStepId(event.target.value)}
+                  value={activeMetricStepId}
+                >
+                  <option value="">Campaign level</option>
+                  {sortedSteps.map((step, index) => (
+                    <option key={step.id} value={step.id}>
+                      Step {index + 1}: {step.subject}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {metricEvents.map((event) => (
+                  <Button
+                    disabled={!activeMetricContactId || recordMetric.isPending}
+                    key={event.eventType}
+                    onClick={() => recordMetric.mutate(event.eventType)}
+                    size="sm"
+                    type="button"
+                    variant={event.eventType === "sent" ? "outline" : "default"}
+                  >
+                    {event.label}
+                  </Button>
+                ))}
+              </div>
+              {recordMetric.isError ? <div className="text-sm text-red-700 lg:col-span-3">Could not record metric.</div> : null}
+            </div>
+          ) : null}
           {!hasMetrics ? (
             <div className="mt-5 rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-[#64748B]">No data yet</div>
           ) : (
@@ -536,6 +713,15 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
             onOpenChange={setDeleteCampaignOpen}
             open={deleteCampaignOpen}
             title="Delete campaign"
+          />
+          <ConfirmDialog
+            confirmLabel="Restart"
+            description="Restart this campaign from step 1 for every enrolled contact that has not been removed. Existing metrics will reset, and messages can be sent again."
+            isPending={restartCampaign.isPending}
+            onConfirm={() => restartCampaign.mutate()}
+            onOpenChange={setRestartCampaignOpen}
+            open={restartCampaignOpen}
+            title="Restart campaign"
           />
         </>
       ) : null}

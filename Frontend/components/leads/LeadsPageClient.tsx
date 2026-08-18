@@ -56,6 +56,7 @@ function toQueryParams(page: number, filters: LeadFilters) {
     min_score: filters.min_score ? Number(filters.min_score) : undefined,
     page,
     page_size: PAGE_SIZE,
+    exclude_converted: filters.status ? undefined : true,
     source: filters.source || undefined,
     status: filters.status || undefined,
   };

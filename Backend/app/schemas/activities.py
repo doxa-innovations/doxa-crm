@@ -99,6 +99,7 @@ class EmailLogCreate(BaseModel):
 class TaskCreate(LinkedEntityMixin):
     title: str = Field(min_length=1, max_length=255)
     description: str | None = None
+    type: ActivityType = ActivityType.task
     status: TaskStatus = TaskStatus.pending
     priority: TaskPriority = TaskPriority.medium
     due_at: datetime | None = None
@@ -109,6 +110,7 @@ class TaskCreate(LinkedEntityMixin):
 class TaskUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
+    type: ActivityType | None = None
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
     due_at: datetime | None = None
@@ -129,6 +131,7 @@ class TaskResponse(BaseModel):
     id: UUID
     title: str
     description: str | None
+    type: ActivityType = ActivityType.task
     status: TaskStatus
     priority: TaskPriority
     due_at: datetime | None

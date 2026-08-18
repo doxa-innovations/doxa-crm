@@ -112,16 +112,19 @@ export function TasksPageClient() {
   const { canWriteTasks } = usePermissions();
   const session = authClient.useSession();
   const storedUser = useAuthStore((state) => state.user);
+  const accessToken = useAuthStore((state) => state.accessToken);
   const sessionUser = session.data?.user;
   const role = normalizeRole(sessionUser?.role ?? storedUser?.role);
   const canSeeAll = role === "super_admin" || role === "sales_manager";
   const fallbackSessionId = stringOrUndefined(sessionUser?.id) ?? storedUser?.id;
+  const hasBackendAuth = Boolean(accessToken || sessionUser) && !session.isPending;
   const meQuery = useQuery({
+    enabled: hasBackendAuth,
     queryFn: () => api.get<User>("/users/me"),
     queryKey: ["users", "me"],
-    retry: false,
+    retry: 1,
   });
-  const currentUserId = meQuery.data?.id ?? (isUuid(fallbackSessionId) ? fallbackSessionId : undefined);
+  const currentUserId = meQuery.data?.id ?? (hasBackendAuth && isUuid(fallbackSessionId) ? fallbackSessionId : undefined);
   const [tab, setTab] = useState<TaskTab>("mine");
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<TaskFilters>({
@@ -140,19 +143,41 @@ export function TasksPageClient() {
   const [completedTaskId, setCompletedTaskId] = useState<string | null>(null);
 
   const tasksQuery = useQuery({
-    enabled: tab === "all" || Boolean(currentUserId),
+    enabled: hasBackendAuth && (tab === "all" || Boolean(currentUserId)),
     queryFn: () => api.get<Task[]>("/tasks/", taskQueryParams(page, tab, filters, currentUserId)),
     queryKey: ["tasks", "list", tab, currentUserId, page, filters],
   });
   const overdueQuery = useQuery({
+    enabled: hasBackendAuth && (tab === "all" || Boolean(currentUserId)),
     queryFn: () => api.get<Task[]>("/tasks/overdue", { owner_id: tab === "mine" ? currentUserId : undefined, page_size: 100 }),
     queryKey: ["tasks", "overdue", tab, currentUserId],
   });
-  const usersQuery = useQuery({ queryFn: () => api.get<User[]>("/users/"), queryKey: ["users", "task-page"], retry: false });
-  const leadsQuery = useQuery({ queryFn: () => api.get<Lead[]>("/leads/", { page_size: 100 }), queryKey: ["leads", "task-page"] });
-  const contactsQuery = useQuery({ queryFn: () => api.get<Contact[]>("/contacts/", { page_size: 100 }), queryKey: ["contacts", "task-page"] });
-  const dealsQuery = useQuery({ queryFn: () => api.get<Deal[]>("/deals/", { page_size: 100 }), queryKey: ["deals", "task-page"] });
-  const accountsQuery = useQuery({ queryFn: () => api.get<Account[]>("/accounts/", { page_size: 100 }), queryKey: ["accounts", "task-page"] });
+  const usersQuery = useQuery({
+    enabled: hasBackendAuth && canSeeAll,
+    queryFn: () => api.get<User[]>("/users/"),
+    queryKey: ["users", "task-page"],
+    retry: false,
+  });
+  const leadsQuery = useQuery({
+    enabled: hasBackendAuth,
+    queryFn: () => api.get<Lead[]>("/leads/", { page_size: 100 }),
+    queryKey: ["leads", "task-page"],
+  });
+  const contactsQuery = useQuery({
+    enabled: hasBackendAuth,
+    queryFn: () => api.get<Contact[]>("/contacts/", { page_size: 100 }),
+    queryKey: ["contacts", "task-page"],
+  });
+  const dealsQuery = useQuery({
+    enabled: hasBackendAuth,
+    queryFn: () => api.get<Deal[]>("/deals/", { page_size: 100 }),
+    queryKey: ["deals", "task-page"],
+  });
+  const accountsQuery = useQuery({
+    enabled: hasBackendAuth,
+    queryFn: () => api.get<Account[]>("/accounts/", { page_size: 100 }),
+    queryKey: ["accounts", "task-page"],
+  });
 
   const completeTask = useMutation({
     mutationFn: (id: string) => api.post<Task>(`/tasks/${id}/complete`),
@@ -404,7 +429,7 @@ export function TasksPageClient() {
         </div>
       </section>
 
-      {!currentUserId && tab === "mine" && !meQuery.isLoading ? (
+      {hasBackendAuth && !currentUserId && tab === "mine" && meQuery.isError ? (
         <div className="rounded-xl border border-amber-100 bg-white p-4 text-sm text-amber-800 shadow-sm">Could not identify the backend user session yet.</div>
       ) : null}
 

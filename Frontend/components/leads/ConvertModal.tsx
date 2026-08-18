@@ -47,6 +47,7 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
   });
   const createAccount = form.watch("create_account");
   const createDeal = form.watch("create_deal");
+  const isAlreadyConverted = lead.status === "converted";
 
   const pipelinesQuery = useQuery({
     queryFn: () => api.get<Pipeline[]>("/pipelines/"),
@@ -90,6 +91,9 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
       void queryClient.invalidateQueries({ queryKey: ["deals"] });
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
+    meta: {
+      successMessage: isAlreadyConverted ? "Contact record ready" : "Lead converted",
+    },
   });
 
   const result = convertLead.data;
@@ -106,10 +110,10 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
     >
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{lead.status === "converted" ? "Lead Contact" : "Convert Lead"}</DialogTitle>
+          <DialogTitle>{isAlreadyConverted ? "Lead Contact" : "Convert Lead"}</DialogTitle>
           <DialogDescription>
-            {lead.status === "converted"
-              ? "Create or return the contact record for this converted lead."
+            {isAlreadyConverted
+              ? "Find the contact record for this converted lead."
               : "Create a contact, and optionally create an account and deal."}
           </DialogDescription>
         </DialogHeader>
@@ -119,7 +123,7 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
             <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-emerald-800">
               <div className="flex items-center gap-2 font-semibold">
                 <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                Lead converted
+                {isAlreadyConverted ? "Contact record ready" : "Lead converted"}
               </div>
             </div>
             <div className="grid gap-2 text-sm">
@@ -192,9 +196,9 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
                 Deal conversion requires an existing account named {lead.company}.
               </div>
             ) : null}
-            {lead.status === "converted" ? (
+            {isAlreadyConverted ? (
               <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                This lead is already marked converted. Submitting will create or return its contact record.
+                This lead is already marked converted. Submitting will find the existing contact, or create it if missing.
               </div>
             ) : null}
             {convertLead.isError ? <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">Could not convert lead.</div> : null}
@@ -204,7 +208,7 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
                 Cancel
               </Button>
               <Button className="bg-[#2563EB] hover:bg-blue-700" disabled={convertLead.isPending} type="submit">
-                {lead.status === "converted" ? "Create Contact" : "Convert Lead"}
+                {isAlreadyConverted ? "Find Contact" : "Convert Lead"}
               </Button>
             </div>
           </form>

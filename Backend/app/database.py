@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from uuid import uuid4
 
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -37,6 +38,18 @@ def build_async_database_url(database_url: str) -> str:
     return url.render_as_string(hide_password=False)
 
 
+def build_async_connect_args(database_url: str) -> dict[str, object]:
+    url = make_url(database_url)
+
+    if _is_transaction_pooler(url.host, url.port):
+        return {
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
+            "statement_cache_size": 0,
+        }
+
+    return {}
+
+
 def _is_supabase_host(host: str | None) -> bool:
     return bool(host and (host.endswith(".supabase.co") or host.endswith(".pooler.supabase.com")))
 
@@ -49,6 +62,7 @@ settings = get_settings()
 
 engine: AsyncEngine = create_async_engine(
     build_async_database_url(settings.database_url),
+    connect_args=build_async_connect_args(settings.database_url),
     pool_pre_ping=True,
     pool_size=settings.db_pool_size,
     max_overflow=settings.db_max_overflow,

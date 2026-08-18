@@ -127,3 +127,9 @@ class CampaignMetricResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CampaignMetricCreate(BaseModel):
+    contact_id: UUID
+    event_type: CampaignMetricEventType
+    step_id: UUID | None = None

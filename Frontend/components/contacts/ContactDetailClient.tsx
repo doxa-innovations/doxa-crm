@@ -101,6 +101,14 @@ function formatLabel(value: string): string {
     .join(" ");
 }
 
+function smsConsentLabel(contact: Contact): string {
+  if (contact.sms_opted_out_at) {
+    return "Opted out";
+  }
+
+  return contact.sms_opted_in_at ? "Opted in" : "Not opted in";
+}
+
 export function ContactDetailClient({ contactId }: ContactDetailClientProps) {
   const queryClient = useQueryClient();
   const { canWriteContacts, canWriteActivities } = usePermissions();
@@ -252,6 +260,10 @@ export function ContactDetailClient({ contactId }: ContactDetailClientProps) {
               <div>
                 <dt className="text-[#64748B]">Phone</dt>
                 <dd className="mt-1 font-medium text-[#0F2444]">{contact.phone}</dd>
+              </div>
+              <div>
+                <dt className="text-[#64748B]">SMS</dt>
+                <dd className="mt-1 font-medium text-[#0F2444]">{smsConsentLabel(contact)}</dd>
               </div>
               <div>
                 <dt className="text-[#64748B]">Owner</dt>

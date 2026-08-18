@@ -16,7 +16,7 @@ import { usePermissions } from "@/lib/permissions";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Campaign, CampaignMetrics, CampaignStatus, CampaignType } from "@/types/api";
 
-const campaignTypes: CampaignType[] = ["email", "event", "social", "cold_call"];
+const campaignTypes: CampaignType[] = ["email", "sms", "event", "social", "cold_call"];
 const campaignStatuses: CampaignStatus[] = ["draft", "active", "paused", "completed"];
 
 function optionLabel(value: string): string {
@@ -49,7 +49,7 @@ function CampaignMetricSummary({ campaign }: { campaign: Campaign }) {
       <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
         <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
           <MailCheck className="h-3.5 w-3.5" aria-hidden="true" />
-          Sent emails
+          Sent messages
         </div>
         <p className="mt-1 text-xl font-semibold text-[#0F2444]">{metrics.sent}</p>
       </div>

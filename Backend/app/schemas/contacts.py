@@ -34,6 +34,8 @@ class ContactCreate(BaseModel):
     owner_id: UUID | None = None
     tags: list[str] = Field(default_factory=list)
     custom_fields: CustomFields = Field(default_factory=dict)
+    sms_opted_in_at: datetime | None = None
+    sms_opted_out_at: datetime | None = None
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -45,6 +47,7 @@ class ContactCreate(BaseModel):
                 "title": "CTO",
                 "tags": ["vip"],
                 "custom_fields": {"preferred_channel": "email"},
+                "sms_opted_in_at": "2026-07-06T09:00:00Z",
             }
         }
     )
@@ -71,6 +74,8 @@ class ContactUpdate(BaseModel):
     tags: list[str] | None = None
     custom_fields: CustomFields | None = None
     is_active: bool | None = None
+    sms_opted_in_at: datetime | None = None
+    sms_opted_out_at: datetime | None = None
 
     @field_validator("tags")
     @classmethod
@@ -108,6 +113,8 @@ class ContactResponse(BaseModel):
     tags: list[str]
     custom_fields: CustomFields
     is_active: bool
+    sms_opted_in_at: datetime | None = None
+    sms_opted_out_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 

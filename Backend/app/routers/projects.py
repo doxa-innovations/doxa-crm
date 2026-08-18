@@ -89,7 +89,17 @@ async def delete_project(
     current_user: Annotated[User, Depends(require_role(*PROJECT_EDITOR_ROLES))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Response:
-    await projects_service.soft_delete_project(db, project_id)
+    await projects_service.archive_project(db, project_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{project_id}/archive", status_code=status.HTTP_204_NO_CONTENT)
+async def archive_project(
+    project_id: UUID,
+    current_user: Annotated[User, Depends(require_role(*PROJECT_EDITOR_ROLES))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    await projects_service.archive_project(db, project_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

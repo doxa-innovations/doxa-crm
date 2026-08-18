@@ -11,10 +11,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
-import type { CampaignSequenceStep, CampaignStepCreate, CampaignStepUpdate } from "@/types/api";
+import type { CampaignSequenceChannel, CampaignSequenceStep, CampaignStepCreate, CampaignStepUpdate } from "@/types/api";
 
 const stepSchema = z.object({
   body: z.string().optional(),
+  channel: z.enum(["email", "sms", "call", "task", "social"]),
   delay_days: z.string().min(1, "Delay is required."),
   subject: z.string().min(1, "Subject is required."),
   variant: z.string().optional(),
@@ -33,6 +34,7 @@ interface SequenceStepFormProps {
 function valuesFromStep(step?: CampaignSequenceStep | null): StepFormValues {
   return {
     body: step?.body ?? "",
+    channel: step?.channel ?? "email",
     delay_days: String(step?.delay_days ?? 0),
     subject: step?.subject ?? "",
     variant: step?.variant ?? "",
@@ -46,10 +48,31 @@ function fieldError(message?: string) {
 function buildPayload(values: StepFormValues): CampaignStepCreate | CampaignStepUpdate {
   return {
     body: values.body || null,
+    channel: values.channel,
     delay_days: Number(values.delay_days),
     subject: values.subject,
     variant: values.variant || null,
   };
+}
+
+const channelOptions: Array<{ label: string; value: CampaignSequenceChannel }> = [
+  { label: "Email", value: "email" },
+  { label: "SMS", value: "sms" },
+  { label: "Call", value: "call" },
+  { label: "Task", value: "task" },
+  { label: "Social", value: "social" },
+];
+
+function bodyLabel(channel: CampaignSequenceChannel): string {
+  if (channel === "sms") {
+    return "SMS Message";
+  }
+
+  return "Body";
+}
+
+function subjectLabel(channel: CampaignSequenceChannel): string {
+  return channel === "email" ? "Subject" : "Step Name";
 }
 
 export function SequenceStepForm({ campaignId, onOpenChange, open, previousStepNumber = 1, step }: SequenceStepFormProps) {
@@ -58,6 +81,8 @@ export function SequenceStepForm({ campaignId, onOpenChange, open, previousStepN
     defaultValues: valuesFromStep(step),
     resolver: zodResolver(stepSchema),
   });
+  const selectedChannel = form.watch("channel");
+  const bodyValue = form.watch("body") ?? "";
 
   useEffect(() => {
     if (open) {
@@ -86,9 +111,23 @@ export function SequenceStepForm({ campaignId, onOpenChange, open, previousStepN
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{step ? "Edit Sequence Step" : "Add Sequence Step"}</DialogTitle>
-          <DialogDescription>Draft the email step and timing in the sequence.</DialogDescription>
+          <DialogDescription>Choose the channel, message, and timing in the sequence.</DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={form.handleSubmit((values) => saveStep.mutate(values))}>
+          <div>
+            <Label htmlFor="step_channel">Channel</Label>
+            <select
+              className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
+              id="step_channel"
+              {...form.register("channel")}
+            >
+              {channelOptions.map((channel) => (
+                <option key={channel.value} value={channel.value}>
+                  {channel.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <Label htmlFor="step_delay">Delay Days</Label>
             <Input id="step_delay" min="0" type="number" {...form.register("delay_days")} />
@@ -96,12 +135,15 @@ export function SequenceStepForm({ campaignId, onOpenChange, open, previousStepN
             {fieldError(form.formState.errors.delay_days?.message)}
           </div>
           <div>
-            <Label htmlFor="step_subject">Subject</Label>
+            <Label htmlFor="step_subject">{subjectLabel(selectedChannel)}</Label>
             <Input id="step_subject" {...form.register("subject")} />
             {fieldError(form.formState.errors.subject?.message)}
           </div>
           <div>
-            <Label htmlFor="step_body">Body</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="step_body">{bodyLabel(selectedChannel)}</Label>
+              {selectedChannel === "sms" ? <span className="text-xs text-[#64748B]">{bodyValue.length}/160</span> : null}
+            </div>
             <textarea
               className="min-h-40 w-full rounded-md border border-[var(--input)] bg-white px-3 py-2 text-sm text-slate-950 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               id="step_body"

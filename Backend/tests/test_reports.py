@@ -225,6 +225,8 @@ async def test_report_exports_hide_internal_ids(monkeypatch):
                 due_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
                 owner_id=rep_id,
                 assignee_name="Amina Reed",
+                linked_to="Acme Legal",
+                linked_type="Account",
             )
         ]
 
@@ -243,12 +245,42 @@ async def test_report_exports_hide_internal_ids(monkeypatch):
     assert str(rep_id) not in reports_service.rows_to_csv(columns, rows)
 
     columns, rows = await reports_service.report_rows_for_export(object(), "overdue-tasks", {})
-    assert columns == ["Title", "Due Date", "Assignee"]
+    assert columns == ["Title", "Due Date", "Assignee", "Linked To", "Linked Type"]
     assert rows[0][0] == "Follow up on Acme legal review"
     assert rows[0][2] == "Amina Reed"
+    assert rows[0][3] == "Acme Legal"
     exported_csv = reports_service.rows_to_csv(columns, rows)
     assert str(task_id) not in exported_csv
     assert str(rep_id) not in exported_csv
+
+
+@pytest.mark.asyncio
+async def test_overdue_tasks_report_includes_linked_record_label():
+    task_id = uuid4()
+    owner_id = uuid4()
+    due_at = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    db = FakeSession(
+        [
+            FakeResult(
+                rows=[
+                    Row(
+                        id=task_id,
+                        title="Follow up on Acme legal review",
+                        due_at=due_at,
+                        owner_id=owner_id,
+                        assignee_name="Amina Reed",
+                        linked_to="Acme Legal",
+                        linked_type="Account",
+                    )
+                ]
+            )
+        ]
+    )
+
+    rows = await reports_service.overdue_tasks(db)
+
+    assert rows[0].linked_to == "Acme Legal"
+    assert rows[0].linked_type == "Account"
 
 
 @pytest.mark.asyncio

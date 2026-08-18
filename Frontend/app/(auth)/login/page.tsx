@@ -1,3 +1,4 @@
+
 "use client";
 
 import { ArrowRight, ShieldCheck } from "lucide-react";
@@ -10,6 +11,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
 import { refreshCurrentUser, refreshFastApiToken } from "@/lib/auth-token";
+
+function loginErrorMessage(error: unknown): string {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : "";
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("server") ||
+    normalized.includes("fetch") ||
+    normalized.includes("database") ||
+    normalized.includes("tenant/user")
+  ) {
+    return "Auth service cannot connect to the database. Check AUTH_DATABASE_URL or DATABASE_URL, then restart the frontend.";
+  }
+
+  return message || "Sign in failed.";
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,7 +62,7 @@ export default function LoginPage() {
       });
 
       if (error) {
-        setErrorMessage(error.message || "Email or password is not correct.");
+        setErrorMessage(loginErrorMessage(error) || "Email or password is not correct.");
         return;
       }
 
@@ -47,8 +71,7 @@ export default function LoginPage() {
       router.push(callbackUrl);
       router.refresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Sign in failed.";
-      setErrorMessage(message);
+      setErrorMessage(loginErrorMessage(error));
     } finally {
       setIsSubmitting(false);
     }
