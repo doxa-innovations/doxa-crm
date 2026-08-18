@@ -21,13 +21,16 @@ cd Backend && docker compose up -d --build
 docker compose logs -f api          # or: frontend, celery_worker, celery_beat
 docker compose down
 
-# Backend, no Docker
-cd Backend && source .venv/bin/activate
-pip install -r requirements.txt
-python -m alembic upgrade head
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
-celery -A app.workers.celery_app.celery_app worker --loglevel=info
-celery -A app.workers.celery_app.celery_app beat --loglevel=info
+# Backend, no Docker.
+# NOTE: do NOT use `source .venv/bin/activate` — pyvenv.cfg records a stale path
+# from before the repo moved, so activation silently falls back to system Python
+# with no dependencies installed. Invoke the interpreter directly instead.
+cd Backend
+./.venv/bin/python -m pip install -r requirements.txt
+./.venv/bin/python -m alembic upgrade head
+./.venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
+./.venv/bin/celery -A app.workers.celery_app.celery_app worker --loglevel=info
+./.venv/bin/celery -A app.workers.celery_app.celery_app beat --loglevel=info
 
 # Frontend
 cd Frontend && npm install --legacy-peer-deps
@@ -38,23 +41,24 @@ Checks (there is no linter and no frontend test runner — these are the only ga
 
 ```bash
 cd Frontend && npm run typecheck && npm run build
-cd Backend && python -m pytest -q
-cd Backend && python -m pytest tests/test_leads.py -q          # single file
-cd Backend && python -m pytest tests/test_leads.py::test_name  # single test
-cd Backend && python -m pytest --cov=app --cov-report=term-missing
-cd Backend && python -m compileall app alembic tests scripts
+cd Backend && ./.venv/bin/python -m pytest -q
+cd Backend && ./.venv/bin/python -m pytest tests/test_leads.py -q          # single file
+cd Backend && ./.venv/bin/python -m pytest tests/test_leads.py::test_name  # single test
+cd Backend && ./.venv/bin/python -m pytest --cov=app --cov-report=term-missing
+cd Backend && ./.venv/bin/python -m compileall app alembic tests scripts
 ```
 
 Migrations and seeds:
 
 ```bash
 cd Backend
-python -m alembic current
-python -m alembic revision --autogenerate -m "describe change"
-python -m alembic upgrade head
-python scripts/seed_default_pipeline.py
-python scripts/seed_demo_data.py        # seeds the CRM `users` table + demo records
-cd ../Frontend && node scripts/seed-auth-users.mjs   # runs BetterAuth migrations + seeds login users
+./.venv/bin/python -m alembic current
+./.venv/bin/python -m alembic revision --autogenerate -m "describe change"
+./.venv/bin/python -m alembic upgrade head
+./.venv/bin/python scripts/seed_default_pipeline.py
+./.venv/bin/python scripts/seed_demo_data.py        # seeds the CRM `users` table + demo records
+cd ../Frontend && node scripts/seed-auth-users.mjs  # dev only; refuses to run when NODE_ENV=production
+cd ../Frontend && ADMIN_EMAIL=… ADMIN_PASSWORD=… node scripts/create-admin.mjs  # production admin
 ```
 
 Load tests: `python Backend/load_tests/api_load_test.py --base-url http://localhost:8001 --scenario health|crm-read|reports ...` (auth scenarios read `LOAD_TEST_TOKEN`).
@@ -87,6 +91,9 @@ Cross-cutting behaviors that are easy to miss:
 - Rate limiting (`app/middleware/rate_limit.py`) degrades to a no-op limiter if `slowapi` is unimportable; the public portal route is the only one with an explicit `@limiter.limit`.
 - `app/database.py::build_async_database_url` rewrites the DSN: coerces the driver to `asyncpg`, maps `sslmode`→`ssl`, forces `ssl=require` for Supabase hosts, and sets `prepared_statement_cache_size=0` for the Supabase *transaction* pooler (port 6543). Pool sizes are deliberately tiny (`DB_POOL_SIZE=1`) because Supabase session pooling runs out of sessions fast — don't raise them casually.
 - Celery: schedules live in `app/workers/celery_app.py`'s `beat_schedule`; a new task module must be added to `WORKER_TASK_MODULES` or it will not be registered.
+- **`CORS_ORIGINS` is mandatory outside development.** `config.py`'s `validate_production_configuration` refuses to construct `Settings` when `ENVIRONMENT` is not `development`/`test` and no origin is configured, or when `SECRET_KEY`/`WEBHOOK_SECRET` still hold their `.env.example` placeholders. Misconfiguration is a startup crash by design.
+- **One image, three processes.** `docker-entrypoint.sh` dispatches on `PROCESS_ROLE` (`api` | `worker` | `beat`, default `api`), so the API, Celery worker, and beat all ship from the same build. An explicit command still wins, which is how `docker-compose.yml` keeps working. There is no `CMD` in the Dockerfile — adding one back would bypass the dispatch entirely.
+- Logging is configured in `app/logging_config.py` and applied at import time by both `main.py` and `celery_app.py`, driven by `LOG_LEVEL`.
 
 ### Backend tests
 
@@ -107,6 +114,10 @@ Tests never touch a database or network. They set env vars at import time (befor
 `Backend/.env` (from `.env.example`) and the frontend env from `Frontend/.env.local.example`. Next.js dev reads `Frontend/.env.local` (what currently exists), but `scripts/seed-auth-users.mjs` hard-reads `Frontend/.env` via `readFileSync` — so the auth seed needs a `Frontend/.env` file specifically, which is why the READMEs say to copy the example to `.env`.
 
 Compose reads `Backend/.env` for both services and passes `SECRET_KEY` through as the frontend's `BETTER_AUTH_SECRET`.
+
+## Deployment
+
+Production runs on Dokploy as separate Applications, not a compose stack. See `docs/deployment/dokploy.md` for the topology, the build-arg vs runtime-env matrix, and the admin bootstrap procedure.
 
 ## Demo data
 
