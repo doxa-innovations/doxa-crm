@@ -1,0 +1,48 @@
+name: Production images
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full 40-character lowercase source SHA already tested in staging
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  backend:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'staging')
+    uses: doxa-innovations/.github/.github/workflows/doxa-container-build.yml@main
+    with:
+      source_sha: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.event.pull_request.head.sha }}
+      environment: production
+      image: ghcr.io/doxa-innovations/doxa-crm-backend
+      dockerfile: Backend/Dockerfile
+      context: Backend
+      use_infisical: false
+
+  frontend:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'staging')
+    uses: doxa-innovations/.github/.github/workflows/doxa-container-build.yml@main
+    with:
+      source_sha: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.event.pull_request.head.sha }}
+      environment: production
+      image: ghcr.io/doxa-innovations/doxa-crm-frontend
+      dockerfile: Frontend/Dockerfile
+      context: Frontend
+      use_infisical: true
+      infisical_identity_id: ${{ vars.DOXA_INFISICAL_IDENTITY_ID }}
+      infisical_project_slug: doxa-crm
+      infisical_env_slug: prod
+      infisical_secret_path: /build
