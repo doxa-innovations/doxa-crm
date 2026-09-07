@@ -23,8 +23,10 @@ class Settings(BaseSettings):
     redis_url: str = Field(alias="REDIS_URL")
     secret_key: str = Field(alias="SECRET_KEY")
     environment: Environment = Field(default="development", alias="ENVIRONMENT")
-    supabase_url: str = Field(alias="SUPABASE_URL")
-    supabase_key: str = Field(alias="SUPABASE_KEY")
+    # Supabase is not required by the CRM. These remain optional only for
+    # compatibility with older deployments that supplied them.
+    supabase_url: str | None = Field(default=None, alias="SUPABASE_URL")
+    supabase_key: str | None = Field(default=None, alias="SUPABASE_KEY")
     db_pool_size: int = Field(default=1, ge=1, le=20, alias="DB_POOL_SIZE")
     db_max_overflow: int = Field(default=1, ge=0, le=40, alias="DB_MAX_OVERFLOW")
     resend_api_key: str | None = Field(default=None, alias="RESEND_API_KEY")
