@@ -1,0 +1,41 @@
+name: Staging images
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full 40-character lowercase source SHA to build
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  backend:
+    uses: doxa-innovations/.github/.github/workflows/doxa-container-build.yml@main
+    with:
+      source_sha: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.sha }}
+      environment: staging
+      image: ghcr.io/doxa-innovations/doxa-crm-backend
+      dockerfile: Backend/Dockerfile
+      context: Backend
+      use_infisical: false
+
+  frontend:
+    uses: doxa-innovations/.github/.github/workflows/doxa-container-build.yml@main
+    with:
+      source_sha: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.sha }}
+      environment: staging
+      image: ghcr.io/doxa-innovations/doxa-crm-frontend
+      dockerfile: Frontend/Dockerfile
+      context: Frontend
+      use_infisical: true
+      infisical_identity_id: ${{ vars.DOXA_INFISICAL_IDENTITY_ID }}
+      infisical_project_slug: doxa-crm
+      infisical_env_slug: staging
+      infisical_secret_path: /build
