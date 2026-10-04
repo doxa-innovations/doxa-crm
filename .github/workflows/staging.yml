@@ -7,8 +7,12 @@ permissions:
   contents: read
   packages: write
   id-token: write
+concurrency:
+  group: crm-stage-check
+  cancel-in-progress: true
 jobs:
   verify:
+    if: github.ref_name == 'stage'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
