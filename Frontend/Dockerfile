@@ -36,6 +36,8 @@ RUN addgroup --system --gid 1001 nodejs \
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder /app/public ./public
+# .next/standalone also carries .next/doxa-watch/maps: the browser source maps that `doxa-watch postbuild`
+# moved out of .next/static, so they resolve stack traces without being served.
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 

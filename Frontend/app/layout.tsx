@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import * as React from "react";
 
+import { DoxaWatchClient } from "@/app/doxa-watch";
 import "@/app/globals.css";
 import { Providers } from "@/app/providers";
 
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body className={inter.className}>
+        <DoxaWatchClient />
         <Providers>{children}</Providers>
       </body>
     </html>
