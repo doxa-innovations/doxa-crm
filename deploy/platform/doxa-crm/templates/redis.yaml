@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: doxa-crm-redis
+  annotations: {argocd.argoproj.io/sync-wave: "-20"}
+spec:
+  selector: {app.kubernetes.io/name: doxa-crm-redis}
+  ports: [{name: tcp, port: 6379, targetPort: 6379}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: doxa-crm-redis
+  annotations: {argocd.argoproj.io/sync-wave: "-20"}
+spec:
+  serviceName: doxa-crm-redis
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: doxa-crm-redis}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: doxa-crm-redis
+        app.kubernetes.io/part-of: doxa-crm
+      annotations:
+        backup.velero.io/backup-volumes: data
+    spec:
+      nodeSelector: {platform.doxa.io/site: {{ .Values.site | quote }}}
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: redis
+          image: {{ .Values.redisImage | quote }}
+          securityContext:
+            {{- include "crm.security" . | nindent 12 }}
+            runAsUser: 999
+            runAsGroup: 999
+          ports: [{containerPort: 6379}]
+          command: [redis-server]
+          args: ["--appendonly", "yes", "--appendfsync", "everysec"]
+          readinessProbe:
+            exec: {command: [redis-cli, ping]}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 25m, memory: 128Mi}
+            limits: {memory: 768Mi}
+          volumeMounts: [{name: data, mountPath: /data}]
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: {{ .Values.storageClass }}
+        resources:
+          requests: {storage: 1Gi}

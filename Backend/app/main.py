@@ -83,6 +83,10 @@ def create_app() -> FastAPI:
     app.add_middleware(AuditContextMiddleware)
     apply_rate_limiting(app)
 
+    @app.get("/live", include_in_schema=False)
+    async def live():
+        return {"status": "ok"}
+
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
         return JSONResponse(

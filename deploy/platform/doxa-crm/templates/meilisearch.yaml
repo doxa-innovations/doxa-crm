@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: doxa-crm-meilisearch
+  annotations: {argocd.argoproj.io/sync-wave: "-20"}
+spec:
+  selector: {app.kubernetes.io/name: doxa-crm-meilisearch}
+  ports: [{name: tcp, port: 7700, targetPort: 7700}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: doxa-crm-meilisearch
+  annotations: {argocd.argoproj.io/sync-wave: "-20"}
+spec:
+  serviceName: doxa-crm-meilisearch
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: doxa-crm-meilisearch}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: doxa-crm-meilisearch
+        app.kubernetes.io/part-of: doxa-crm
+      annotations:
+        backup.velero.io/backup-volumes: data
+    spec:
+      nodeSelector: {platform.doxa.io/site: {{ .Values.site | quote }}}
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: meilisearch
+          image: {{ .Values.meilisearchImage | quote }}
+          securityContext:
+            {{- include "crm.security" . | nindent 12 }}
+            runAsUser: 1000
+            runAsGroup: 1000
+          ports: [{containerPort: 7700}]
+          env:
+            - {name: MEILI_ENV, value: production}
+            - {name: MEILI_NO_ANALYTICS, value: "true"}
+            - name: MEILI_MASTER_KEY
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.secretName }}, key: MEILISEARCH_API_KEY}
+          readinessProbe:
+            httpGet: {path: /health, port: 7700}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 25m, memory: 128Mi}
+            limits: {memory: 768Mi}
+          volumeMounts: [{name: data, mountPath: /meili_data}]
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: {{ .Values.storageClass }}
+        resources:
+          requests: {storage: 2Gi}

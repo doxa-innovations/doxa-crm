@@ -29,7 +29,7 @@ function loginErrorMessage(error: unknown): string {
     normalized.includes("database") ||
     normalized.includes("tenant/user")
   ) {
-    return "Auth service cannot connect to the database. Check AUTH_DATABASE_URL or DATABASE_URL, then restart the frontend.";
+    return "Sign-in is temporarily unavailable. Please try again in a moment.";
   }
 
   return message || "Sign in failed.";
@@ -45,8 +45,23 @@ export default function LoginPage() {
 
   React.useEffect(() => {
     const nextCallbackUrl = new URLSearchParams(window.location.search).get("callbackUrl");
-    setCallbackUrl(nextCallbackUrl ?? "/dashboard");
+    setCallbackUrl(nextCallbackUrl?.startsWith("/") && !nextCallbackUrl.startsWith("//") && !nextCallbackUrl.includes("\\") ? nextCallbackUrl : "/dashboard");
+    if (new URLSearchParams(window.location.search).has("error")) {
+      setErrorMessage("Google sign-in was not completed. Use an approved account or contact your administrator.");
+    }
   }, []);
+
+  async function signInWithGoogle() {
+    setErrorMessage(null);
+    setIsSubmitting(true);
+    try {
+      const result = await authClient.signIn.social({ provider: "google", callbackURL: callbackUrl, errorCallbackURL: "/login?error=google" });
+      if (result.error) throw new Error(result.error.message || "Google sign-in failed. Please try again.");
+    } catch (error) {
+      setErrorMessage(loginErrorMessage(error));
+      setIsSubmitting(false);
+    }
+  }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -96,6 +111,10 @@ export default function LoginPage() {
           </div>
         </CardHeader>
         <CardContent>
+          <Button className="mb-5 w-full" variant="outline" disabled={isSubmitting} type="button" onClick={signInWithGoogle}>
+            Continue with Google
+          </Button>
+          <p className="mb-4 text-center text-sm text-slate-600">Or sign in with your CRM password</p>
           <form className="grid gap-4" onSubmit={onSubmit}>
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>

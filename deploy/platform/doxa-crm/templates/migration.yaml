@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: doxa-crm-migrate
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "-10"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels: {app.kubernetes.io/part-of: doxa-crm}
+    spec:
+      {{- include "crm.placement" . | nindent 6 }}
+      restartPolicy: Never
+      initContainers:
+        - name: crm-schema
+          image: "{{ .Values.backendImage }}:{{ required "CRM imageTag is required" .Values.imageTag }}"
+          command: [sh, -ec, "alembic upgrade head && python -m scripts.seed_default_pipeline"]
+          envFrom: [{secretRef: {name: {{ .Values.secretName }}}}]
+          securityContext:
+            {{- include "crm.security" . | nindent 12 }}
+            runAsUser: 1000
+          resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}
+      containers:
+        - name: auth-schema
+          image: "{{ .Values.frontendImage }}:{{ .Values.imageTag }}"
+          command: [node, scripts/migrate-auth.mjs]
+          envFrom: [{secretRef: {name: {{ .Values.secretName }}}}]
+          securityContext:
+            {{- include "crm.security" . | nindent 12 }}
+            runAsUser: 1001
+          resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}

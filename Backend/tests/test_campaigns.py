@@ -617,9 +617,10 @@ async def test_process_campaign_step_sends_email_records_metric_and_schedules_ne
     )
     scheduled: dict[str, object] = {}
 
-    async def fake_send_email(to_email, subject, body):
+    async def fake_send_email(to_email, subject, body, tags):
         assert to_email == "ada@example.com"
         assert subject == "Hello"
+        assert tags == [f"cmp_{campaign_id}", f"cnt_{contact_id}", f"stp_{current_step_id}"]
         return {"id": "email_123"}
 
     def fake_apply_async(*, args, countdown):
