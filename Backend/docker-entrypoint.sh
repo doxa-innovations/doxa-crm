@@ -24,7 +24,8 @@ case "$PROCESS_ROLE" in
     ;;
   worker)
     exec celery -A app.workers.celery_app.celery_app worker \
-      --loglevel="${CELERY_LOG_LEVEL:-info}"
+      --loglevel="${CELERY_LOG_LEVEL:-info}" \
+      --concurrency="${CELERY_WORKER_CONCURRENCY:-2}"
     ;;
   beat)
     exec celery -A app.workers.celery_app.celery_app beat \

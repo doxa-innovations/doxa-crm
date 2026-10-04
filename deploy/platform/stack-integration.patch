@@ -1,0 +1,55 @@
+diff --git a/argocd/foundation/doxa-website-stack-production.yaml b/argocd/foundation/doxa-website-stack-production.yaml
+index 6f07510..f38d39c 100644
+--- a/argocd/foundation/doxa-website-stack-production.yaml
++++ b/argocd/foundation/doxa-website-stack-production.yaml
+@@ -30,6 +30,11 @@ metadata:
+     argocd-image-updater.argoproj.io/diagram.allow-tags: regexp:^prod-[0-9a-f]{40}$
+     argocd-image-updater.argoproj.io/diagram.helm.image-name: diagram.image.repository
+     argocd-image-updater.argoproj.io/diagram.helm.image-tag: diagram.image.tag
++    # Backend is published last, after the matching frontend. One tag drives all CRM roles.
++    argocd-image-updater.argoproj.io/crm.update-strategy: newest-build
++    argocd-image-updater.argoproj.io/crm.allow-tags: regexp:^prod-[0-9a-f]{40}$
++    argocd-image-updater.argoproj.io/crm.helm.image-name: crm.backendImage
++    argocd-image-updater.argoproj.io/crm.helm.image-tag: crm.imageTag
+     argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/doxa-image-updater-github-app
+     argocd-image-updater.argoproj.io/git-repository: https://github.com/doxa-innovations/doxa-k8s-platform.git
+     argocd-image-updater.argoproj.io/git-branch: main
+diff --git a/charts/doxa-website-stack/Chart.lock b/charts/doxa-website-stack/Chart.lock
+index adf27ef..5044496 100644
+--- a/charts/doxa-website-stack/Chart.lock
++++ b/charts/doxa-website-stack/Chart.lock
+@@ -14,5 +14,8 @@ dependencies:
+ - name: doxa-app
+   repository: file://../doxa-app
+   version: 0.2.0
+-digest: sha256:f5fc5641da11002b13ca8456eff790b4b98bc73f0cb74e52335493f368ff1b1a
+-generated: "2026-10-01T15:16:08.941901182+03:00"
++- name: doxa-crm
++  repository: file://../doxa-crm
++  version: 0.1.0
++digest: sha256:7b3a478e7a4537e1268d415f6a95332c65095d88b1f80c07ca28e678df1f8c2d
++generated: "2026-10-04T13:32:26.194625944+03:00"
+diff --git a/charts/doxa-website-stack/Chart.yaml b/charts/doxa-website-stack/Chart.yaml
+index d9c53fb..6d02466 100644
+--- a/charts/doxa-website-stack/Chart.yaml
++++ b/charts/doxa-website-stack/Chart.yaml
+@@ -27,3 +27,8 @@ dependencies:
+     condition: diagram.enabled
+     version: 0.2.0
+     repository: file://../doxa-app
++  - name: doxa-crm
++    alias: crm
++    condition: crm.enabled
++    version: 0.1.0
++    repository: file://../doxa-crm
+diff --git a/charts/doxa-website-stack/values.yaml b/charts/doxa-website-stack/values.yaml
+index bb59d2e..3ba780e 100644
+--- a/charts/doxa-website-stack/values.yaml
++++ b/charts/doxa-website-stack/values.yaml
+@@ -35,3 +35,6 @@ forms:
+ # Diagram is activated explicitly only for production.
+ diagram:
+   enabled: false
++
++crm:
++  enabled: false

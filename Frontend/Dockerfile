@@ -9,9 +9,7 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Next.js inlines NEXT_PUBLIC_* at build time, and Dokploy does not expose
-# runtime environment variables during a Dockerfile build. These must arrive as
-# build args or the bundle ships pointing at localhost.
+# Empty public URLs use the browser origin, so the same build works behind ingress.
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_APP_URL
 ARG NEXT_PUBLIC_BETTER_AUTH_URL
@@ -35,6 +33,8 @@ ENV NODE_ENV=production \
 RUN addgroup --system --gid 1001 nodejs \
     && adduser --system --uid 1001 nextjs
 
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static

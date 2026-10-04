@@ -1,0 +1,49 @@
+name: Stage build check
+on:
+  push:
+    branches: [stage]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+concurrency:
+  group: crm-stage-check
+  cancel-in-progress: true
+jobs:
+  verify:
+    if: github.ref_name == 'stage'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r Backend/requirements.txt
+      - run: python -m pytest -q
+        working-directory: Backend
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm, cache-dependency-path: Frontend/package-lock.json}
+      - run: npm ci --legacy-peer-deps
+        working-directory: Frontend
+      - run: npm run typecheck
+        working-directory: Frontend
+  backend:
+    needs: verify
+    uses: doxa-innovations/.github/.github/workflows/doxa-container-build.yml@main
+    with:
+      source_sha: ${{ github.sha }}
+      environment: staging
+      image: ghcr.io/doxa-innovations/doxa-crm-backend
+      dockerfile: Backend/Dockerfile
+      context: Backend
+      use_infisical: false
+  frontend:
+    needs: backend
+    uses: doxa-innovations/.github/.github/workflows/doxa-container-build.yml@main
+    with:
+      source_sha: ${{ github.sha }}
+      environment: staging
+      image: ghcr.io/doxa-innovations/doxa-crm-frontend
+      dockerfile: Frontend/Dockerfile
+      context: Frontend
+      use_infisical: false

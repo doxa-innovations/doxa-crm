@@ -1,0 +1,5 @@
+apiVersion: v2
+name: doxa-crm
+description: Doxa CRM frontend, API, background jobs and isolated state
+type: application
+version: 0.1.0

@@ -1,0 +1,16 @@
+# Parent stack enables this chart only after images and Infisical are ready.
+imageTag: ""
+backendImage: ghcr.io/doxa-innovations/doxa-crm-backend
+frontendImage: ghcr.io/doxa-innovations/doxa-crm-frontend
+host: crm.doxaplc.com
+origin: 2.25.114.44
+site: boston
+secretName: doxa-crm-runtime
+infisical:
+  projectSlug: doxa-website-prod
+  environment: prod
+  path: /crm
+storageClass: doxa-local-stateful
+postgresImage: postgres:18.6-alpine3.24
+redisImage: redis:7.4-alpine
+meilisearchImage: getmeili/meilisearch:v1.12.8

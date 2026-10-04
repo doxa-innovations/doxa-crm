@@ -1,0 +1,4 @@
+# Only the reviewed template may contain environment key names in Git.
+*.env
+.env*
+__pycache__/
