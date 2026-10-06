@@ -1,4 +1,6 @@
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
+import { randomUUID } from "node:crypto";
 import { nextCookies } from "better-auth/next-js";
 import { jwt } from "better-auth/plugins";
 import { SignJWT, type JWTPayload } from "jose";
@@ -36,7 +38,7 @@ const databaseUrl = validatedAuthDatabaseUrl(
     : requireEnv("DATABASE_URL", fallbackDatabaseUrl),
 );
 const betterAuthUrl = requireEnv("BETTER_AUTH_URL", "http://localhost:3000");
-const backendAudience = requireEnv("NEXT_PUBLIC_API_URL", "http://localhost:8001");
+const backendAudience = process.env.NEXT_PUBLIC_API_URL || betterAuthUrl;
 const betterAuthSecret = ((): string => {
   const explicit = process.env.BETTER_AUTH_SECRET;
   if (explicit && explicit.trim().length > 0) {
@@ -145,13 +147,52 @@ function fastApiPayload(user: object): JWTPayload {
   };
 }
 
+const ssoAdmins = new Set((process.env.CRM_SSO_ADMIN_EMAILS || "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
+
 export const auth = betterAuth({
   appName: "Doxa CRM",
   baseURL: betterAuthUrl,
   secret: betterAuthSecret,
   database,
+  socialProviders: process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ? {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      mapProfileToUser: (profile) => {
+        if (!profile.email_verified || !ssoAdmins.has(profile.email.toLowerCase())) {
+          throw new APIError("FORBIDDEN", { message: "This Google account is not allowed to access the CRM." });
+        }
+        return { full_name: profile.name };
+      },
+    },
+  } : {},
+  databaseHooks: {
+    user: { create: { before: async (user) => {
+      if (!user.emailVerified || !ssoAdmins.has(user.email.toLowerCase())) {
+        throw new APIError("FORBIDDEN", { message: "Ask your administrator for CRM access." });
+      }
+      return { data: { ...user, role: "super_admin", full_name: user.name } };
+    } } },
+    session: { create: { before: async (session) => {
+      const result = await database.query('SELECT email, name, role, "emailVerified" FROM "user" WHERE id = $1', [session.userId]);
+      const user = result.rows[0];
+      if (!user) return false;
+      // Only verified, explicitly allowed Google administrators are provisioned.
+      // Existing CRM users retain their database role and disabled state.
+      if (user.emailVerified && ssoAdmins.has(user.email.toLowerCase())) {
+        await database.query(`INSERT INTO users (id, email, full_name, role, is_active, created_at, updated_at)
+          VALUES ($1, $2, $3, 'super_admin', true, now(), now()) ON CONFLICT (email) DO NOTHING`,
+          [randomUUID(), user.email.toLowerCase(), user.name]);
+      }
+      const crm = await database.query('SELECT role, is_active FROM users WHERE lower(email) = lower($1)', [user.email]);
+      if (!crm.rows[0]?.is_active) throw new APIError("FORBIDDEN", { message: "Your CRM account is not active. Contact your administrator." });
+      await database.query('UPDATE "user" SET role = $1 WHERE id = $2', [crm.rows[0].role, session.userId]);
+      return { data: session };
+    } } },
+  },
   emailAndPassword: {
     enabled: true,
+    disableSignUp: true,
     requireEmailVerification: false,
   },
   user: {

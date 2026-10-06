@@ -8,7 +8,7 @@ type ExportFormat = "csv" | "pdf" | "xlsx";
 type ExportParamValue = string | number | boolean | null | undefined;
 export type ExportParams = Record<string, ExportParamValue>;
 
-const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001"}/api/v1`;
+const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_URL ?? ""}/api/v1`;
 
 function appendParam(url: URL, key: string, value: ExportParamValue): void {
   if (value === undefined || value === null || value === "") {
@@ -19,7 +19,7 @@ function appendParam(url: URL, key: string, value: ExportParamValue): void {
 }
 
 function exportUrl(format: ExportFormat, report: string, params: ExportParams): string {
-  const url = new URL(`${API_BASE_URL.replace(/\/+$/, "")}/reports/export/${format}`);
+  const url = new URL(`${API_BASE_URL.replace(/\/+$/, "")}/reports/export/${format}`, window.location.origin);
   url.searchParams.set("report", report);
   Object.entries(params).forEach(([key, value]) => appendParam(url, key, value));
   return url.toString();

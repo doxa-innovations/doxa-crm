@@ -54,8 +54,9 @@ def test_campaign_tasks_apply(monkeypatch):
     campaign_id = uuid4()
     contact_id = uuid4()
 
-    async def fake_process(enrollment_id_arg):
+    async def fake_process(enrollment_id_arg, scheduled_step_index):
         assert enrollment_id_arg == enrollment_id
+        assert scheduled_step_index is None
         return {"status": "scheduled_next"}
 
     async def fake_enroll(campaign_id_arg, contact_id_arg):

@@ -306,3 +306,9 @@ API_INTERNAL_URL=http://api:8000
 ```
 
 Never commit `.env` files or real secrets.
+
+## Kubernetes deployment
+
+See [Kubernetes deployment](docs/deployment/kubernetes.md) for the Doxa stack,
+`stage` image checks → `production` promotion, dedicated database, Infisical
+`prod:/crm`, and Google SSO. Staging does not deploy a Kubernetes environment.

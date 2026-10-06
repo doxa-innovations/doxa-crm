@@ -83,3 +83,13 @@ async def test_error_shape_for_validation_errors():
     assert response.status_code == 422
     assert response.json()["code"] == "validation_error"
     assert isinstance(response.json()["detail"], str)
+
+
+@pytest.mark.asyncio
+async def test_liveness_does_not_require_database_or_redis():
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/live")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}

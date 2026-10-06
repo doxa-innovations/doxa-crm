@@ -1,0 +1,67 @@
+{{- range $role := list "frontend" "api" "worker" "beat" }}
+{{- $frontend := eq $role "frontend" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: doxa-crm-{{ $role }}
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  {{- if eq $role "beat" }}
+  strategy: {type: Recreate}
+  {{- else }}
+  strategy: {type: RollingUpdate, rollingUpdate: {maxSurge: 1, maxUnavailable: 0}}
+  {{- end }}
+  selector:
+    matchLabels: {app.kubernetes.io/name: doxa-crm-{{ $role }}}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: doxa-crm-{{ $role }}
+        app.kubernetes.io/part-of: doxa-crm
+    spec:
+      {{- include "crm.placement" $ | nindent 6 }}
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: {{ $role }}
+          image: "{{ ternary $.Values.frontendImage $.Values.backendImage $frontend }}:{{ required "CRM imageTag is required" $.Values.imageTag }}"
+          securityContext:
+            {{- include "crm.security" $ | nindent 12 }}
+            runAsUser: {{ ternary 1001 1000 $frontend }}
+          envFrom: [{secretRef: {name: {{ $.Values.secretName }}}}]
+          env:
+            - {name: RUN_MIGRATIONS, value: "false"}
+            {{- if not $frontend }}
+            - {name: PROCESS_ROLE, value: {{ $role | quote }}}
+            {{- end }}
+          {{- if or $frontend (eq $role "api") }}
+          ports: [{name: http, containerPort: {{ ternary 3000 8000 $frontend }}}]
+          startupProbe:
+            httpGet: {path: {{ ternary "/api/health" "/live" $frontend }}, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet: {path: {{ ternary "/api/health" "/health" $frontend }}, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: {path: {{ ternary "/api/health" "/live" $frontend }}, port: http}
+            periodSeconds: 20
+            timeoutSeconds: 5
+          {{- end }}
+          resources:
+            requests: {cpu: 50m, memory: 192Mi}
+            limits: {memory: 768Mi}
+{{- if or $frontend (eq $role "api") }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: doxa-crm-{{ $role }}
+spec:
+  selector: {app.kubernetes.io/name: doxa-crm-{{ $role }}}
+  ports: [{name: http, port: 80, targetPort: http}]
+{{- end }}
+{{- end }}

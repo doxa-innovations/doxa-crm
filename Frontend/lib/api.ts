@@ -14,7 +14,7 @@ interface ApiClientOptions extends Omit<RequestInit, "body" | "headers"> {
   skipAuth?: boolean;
 }
 
-const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001"}/api/v1`;
+const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_URL ?? ""}/api/v1`;
 const TOKEN_REFRESH_GRACE_SECONDS = 30;
 
 function normalizeBaseUrl(url: string): string {
@@ -53,7 +53,7 @@ function appendQueryValue(url: URL, key: string, value: QueryPrimitive): void {
 }
 
 function buildUrl(path: string, params?: QueryParams): string {
-  const url = new URL(`${normalizeBaseUrl(API_BASE_URL)}${normalizePath(path)}`);
+  const url = new URL(`${normalizeBaseUrl(API_BASE_URL)}${normalizePath(path)}`, window.location.origin);
   appendQueryParams(url, params);
   return url.toString();
 }

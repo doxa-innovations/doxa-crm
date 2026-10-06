@@ -1,0 +1,59 @@
+name: Promote stage to production
+on:
+  pull_request:
+    branches: [production]
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full SHA from a successful Stage build check, merged into production
+        required: true
+        type: string
+permissions:
+  actions: read
+  contents: read
+  packages: write
+  id-token: write
+concurrency:
+  group: crm-production-promotion
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged && github.event.pull_request.head.ref == 'stage' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment: production
+    outputs:
+      sha: ${{ steps.check.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, ref: production}
+      - id: check
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha || github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/production
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/staging.yml/runs?head_sha=$SOURCE_SHA&status=success" --jq '.workflow_runs | any(.head_branch == "stage")' | grep -qx true
+          echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+  frontend:
+    needs: verify
+    uses: doxa-innovations/.github/.github/workflows/doxa-container-build.yml@main
+    with:
+      source_sha: ${{ needs.verify.outputs.sha }}
+      environment: production
+      image: ghcr.io/doxa-innovations/doxa-crm-frontend
+      dockerfile: Frontend/Dockerfile
+      context: Frontend
+      use_infisical: false
+  backend:
+    needs: [verify, frontend]
+    uses: doxa-innovations/.github/.github/workflows/doxa-container-build.yml@main
+    with:
+      source_sha: ${{ needs.verify.outputs.sha }}
+      environment: production
+      image: ghcr.io/doxa-innovations/doxa-crm-backend
+      dockerfile: Backend/Dockerfile
+      context: Backend
+      use_infisical: false

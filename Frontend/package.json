@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && doxa-watch postbuild",
     "start": "next start",
     "typecheck": "tsc --noEmit"
   },
@@ -18,6 +18,7 @@
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "date-fns": "4.4.0",
+    "@doxa-innovations/watch": "^0.1.0",
     "jose": "6.2.3",
     "lucide-react": "1.20.0",
     "next": "15.5.19",
