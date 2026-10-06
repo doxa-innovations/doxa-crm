@@ -1,4 +1,9 @@
 "use client";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+import {
+  useRecordOptions,
+  RecordOptionsStatus,
+} from "@/hooks/useRecordOptions";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,9 +22,23 @@ import { TagInput } from "@/components/shared/TagInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { api } from "@/lib/api";
-import type { Account, Contact, ContactCreate, ContactUpdate, User } from "@/types/api";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { api, apiErrorDetail } from "@/lib/api";
+import type {
+  Account,
+  Contact,
+  ContactCreate,
+  ContactUpdate,
+  User,
+} from "@/types/api";
 
 const contactFormSchema = z
   .object({
@@ -107,11 +126,22 @@ function valuesFromContact(contact?: Contact | null): ContactFormValues {
   };
 }
 
-function fieldError(message?: string) {
-  return message ? <p className="mt-1 text-xs text-red-600">{message}</p> : null;
+function fieldError(message?: string, field?: string) {
+  return message ? (
+    <p
+      id={field ? `${field}-error` : undefined}
+      role="alert"
+      className="mt-1 text-xs text-red-600"
+    >
+      {message}
+    </p>
+  ) : null;
 }
 
-function buildPayload(values: ContactFormValues, contact?: Contact | null): ContactCreate | ContactUpdate {
+function buildPayload(
+  values: ContactFormValues,
+  contact?: Contact | null,
+): ContactCreate | ContactUpdate {
   const now = new Date().toISOString();
 
   return {
@@ -122,21 +152,37 @@ function buildPayload(values: ContactFormValues, contact?: Contact | null): Cont
     last_name: values.last_name,
     owner_id: values.owner_id || null,
     phone: values.phone,
-    sms_opted_in_at: values.sms_opted_in ? contact?.sms_opted_in_at ?? now : null,
-    sms_opted_out_at: values.sms_opted_out ? contact?.sms_opted_out_at ?? now : null,
+    sms_opted_in_at: values.sms_opted_in
+      ? (contact?.sms_opted_in_at ?? now)
+      : null,
+    sms_opted_out_at: values.sms_opted_out
+      ? (contact?.sms_opted_out_at ?? now)
+      : null,
     tags: values.tags,
     title: values.title,
   };
 }
 
-export function ContactForm({ contact, onOpenChange, onSaved, open }: ContactFormProps) {
+export function ContactForm({
+  contact,
+  onOpenChange,
+  onSaved,
+  open,
+}: ContactFormProps) {
   const queryClient = useQueryClient();
-  const [accountSearch, setAccountSearch] = useState(contact?.account_name ?? "");
+  const [accountSearch, setAccountSearch] = useState(
+    contact?.account_name ?? "",
+  );
   const debouncedAccountSearch = useDebouncedValue(accountSearch, 300);
   const form = useForm<ContactFormValues>({
     defaultValues: valuesFromContact(contact),
     resolver: zodResolver(contactFormSchema),
   });
+  const confirmDiscard = useUnsavedChanges(open && form.formState.isDirty);
+  const handleOpenChange = (next: boolean) => {
+    if (next || confirmDiscard()) onOpenChange(next);
+  };
+
   const tags = form.watch("tags");
   const customFields = form.watch("custom_fields");
 
@@ -147,20 +193,28 @@ export function ContactForm({ contact, onOpenChange, onSaved, open }: ContactFor
     }
   }, [contact, form, open]);
 
-  const accountsQuery = useQuery({
-    queryFn: () => api.get<Account[]>("/accounts/", { page_size: 20, search: debouncedAccountSearch || undefined }),
-    queryKey: ["accounts", "search-select", debouncedAccountSearch],
-  });
+  const accountsQuery = useRecordOptions<Account>(
+    "/accounts/",
+    { page_size: 20, search: debouncedAccountSearch || undefined },
+    ["accounts", "search-select", debouncedAccountSearch],
+  );
   const usersQuery = useQuery({
-    queryFn: () => api.get<User[]>("/users/"),
+    queryFn: () => api.get<User[]>("/users/directory"),
     queryKey: ["users", "owner-select"],
     retry: false,
   });
 
   const accountOptions = useMemo<AccountOption[]>(() => {
-    const options = (accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name }));
+    const options = (accountsQuery.data ?? []).map((account) => ({
+      id: account.id,
+      name: account.name,
+    }));
 
-    if (contact?.account_id && contact.account_name && !options.some((account) => account.id === contact.account_id)) {
+    if (
+      contact?.account_id &&
+      contact.account_name &&
+      !options.some((account) => account.id === contact.account_id)
+    ) {
       options.unshift({ id: contact.account_id, name: contact.account_name });
     }
 
@@ -169,19 +223,33 @@ export function ContactForm({ contact, onOpenChange, onSaved, open }: ContactFor
       return options;
     }
 
-    return options.filter((account) => account.name.toLowerCase().includes(normalizedSearch));
-  }, [accountsQuery.data, contact?.account_id, contact?.account_name, debouncedAccountSearch]);
+    return options.filter((account) =>
+      account.name.toLowerCase().includes(normalizedSearch),
+    );
+  }, [
+    accountsQuery.data,
+    contact?.account_id,
+    contact?.account_name,
+    debouncedAccountSearch,
+  ]);
 
   const saveContact = useMutation({
     mutationFn: (values: ContactFormValues) => {
       const payload = buildPayload(values, contact);
       if (contact) {
-        return api.patch<Contact, ContactUpdate>(`/contacts/${contact.id}`, payload);
+        return api.patch<Contact, ContactUpdate>(
+          `/contacts/${contact.id}`,
+          payload,
+        );
       }
 
-      return api.post<Contact, ContactCreate>("/contacts/", payload as ContactCreate);
+      return api.post<Contact, ContactCreate>(
+        "/contacts/",
+        payload as ContactCreate,
+      );
     },
     onSuccess: (savedContact) => {
+      form.reset(form.getValues());
       void queryClient.invalidateQueries({ queryKey: ["contacts"] });
       void queryClient.invalidateQueries({ queryKey: ["accounts"] });
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -193,71 +261,152 @@ export function ContactForm({ contact, onOpenChange, onSaved, open }: ContactFor
   const submitting = saveContact.isPending;
 
   return (
-    <Sheet onOpenChange={onOpenChange} open={open}>
+    <Sheet onOpenChange={handleOpenChange} open={open}>
       <SheetContent>
         <SheetHeader>
           <SheetTitle>{contact ? "Edit Contact" : "New Contact"}</SheetTitle>
-          <SheetDescription>{contact ? "Update contact metadata and ownership." : "Create a CRM contact record."}</SheetDescription>
+          <SheetDescription>
+            {contact
+              ? "Update contact metadata and ownership."
+              : "Create a CRM contact record."}
+          </SheetDescription>
         </SheetHeader>
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={form.handleSubmit((values) => saveContact.mutate(values))}>
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={form.handleSubmit((values) => saveContact.mutate(values))}
+        >
           <SheetBody className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="first_name">First Name</Label>
-                <Input id="first_name" disabled={submitting} {...form.register("first_name")} />
-                {fieldError(form.formState.errors.first_name?.message)}
+                <Input
+                  id="first_name"
+                  disabled={submitting}
+                  aria-invalid={Boolean(form.formState.errors.first_name)}
+                  aria-describedby={
+                    form.formState.errors.first_name
+                      ? "first_name-error"
+                      : undefined
+                  }
+                  {...form.register("first_name")}
+                />
+                {fieldError(
+                  form.formState.errors.first_name?.message,
+                  "first_name",
+                )}
               </div>
               <div>
                 <Label htmlFor="last_name">Last Name</Label>
-                <Input id="last_name" disabled={submitting} {...form.register("last_name")} />
-                {fieldError(form.formState.errors.last_name?.message)}
+                <Input
+                  id="last_name"
+                  disabled={submitting}
+                  aria-invalid={Boolean(form.formState.errors.last_name)}
+                  aria-describedby={
+                    form.formState.errors.last_name
+                      ? "last_name-error"
+                      : undefined
+                  }
+                  {...form.register("last_name")}
+                />
+                {fieldError(
+                  form.formState.errors.last_name?.message,
+                  "last_name",
+                )}
               </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" disabled={submitting} type="email" {...form.register("email")} />
-                {fieldError(form.formState.errors.email?.message)}
+                <Input
+                  id="email"
+                  disabled={submitting}
+                  type="email"
+                  aria-invalid={Boolean(form.formState.errors.email)}
+                  aria-describedby={
+                    form.formState.errors.email ? "email-error" : undefined
+                  }
+                  {...form.register("email")}
+                />
+                {fieldError(form.formState.errors.email?.message, "email")}
               </div>
               <div>
                 <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" disabled={submitting} {...form.register("phone")} />
-                {fieldError(form.formState.errors.phone?.message)}
+                <Input
+                  id="phone"
+                  disabled={submitting}
+                  aria-invalid={Boolean(form.formState.errors.phone)}
+                  aria-describedby={
+                    form.formState.errors.phone ? "phone-error" : undefined
+                  }
+                  {...form.register("phone")}
+                />
+                {fieldError(form.formState.errors.phone?.message, "phone")}
               </div>
             </div>
 
             <div>
               <Label htmlFor="title">Title</Label>
-              <Input id="title" disabled={submitting} {...form.register("title")} />
-              {fieldError(form.formState.errors.title?.message)}
+              <Input
+                id="title"
+                disabled={submitting}
+                aria-invalid={Boolean(form.formState.errors.title)}
+                aria-describedby={
+                  form.formState.errors.title ? "title-error" : undefined
+                }
+                {...form.register("title")}
+              />
+              {fieldError(form.formState.errors.title?.message, "title")}
             </div>
 
             <div className="rounded-lg border border-slate-200 p-4">
-              <h3 className="text-sm font-semibold text-[#0F2444]">Messaging Preferences</h3>
+              <h3 className="text-sm font-semibold text-[var(--navy)]">
+                Messaging Preferences
+              </h3>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <label className="flex items-center gap-2 text-sm font-medium text-[#0F2444]" htmlFor="sms_opted_in">
+                <label
+                  className="flex items-center gap-2 text-sm font-medium text-[var(--navy)]"
+                  htmlFor="sms_opted_in"
+                >
                   <input
-                    className="h-4 w-4 rounded border-slate-300 text-[#2563EB]"
+                    className="h-4 w-4 rounded border-slate-300 text-[var(--primary)]"
                     disabled={submitting}
                     id="sms_opted_in"
                     type="checkbox"
+                    aria-invalid={Boolean(form.formState.errors.sms_opted_in)}
+                    aria-describedby={
+                      form.formState.errors.sms_opted_in
+                        ? "sms_opted_in-error"
+                        : undefined
+                    }
                     {...form.register("sms_opted_in")}
                   />
                   SMS opt-in
                 </label>
-                <label className="flex items-center gap-2 text-sm font-medium text-[#0F2444]" htmlFor="sms_opted_out">
+                <label
+                  className="flex items-center gap-2 text-sm font-medium text-[var(--navy)]"
+                  htmlFor="sms_opted_out"
+                >
                   <input
-                    className="h-4 w-4 rounded border-slate-300 text-[#2563EB]"
+                    className="h-4 w-4 rounded border-slate-300 text-[var(--primary)]"
                     disabled={submitting}
                     id="sms_opted_out"
                     type="checkbox"
+                    aria-invalid={Boolean(form.formState.errors.sms_opted_out)}
+                    aria-describedby={
+                      form.formState.errors.sms_opted_out
+                        ? "sms_opted_out-error"
+                        : undefined
+                    }
                     {...form.register("sms_opted_out")}
                   />
                   SMS opt-out
                 </label>
               </div>
-              {fieldError(form.formState.errors.sms_opted_out?.message)}
+              {fieldError(
+                form.formState.errors.sms_opted_out?.message,
+                "sms_opted_out",
+              )}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -267,12 +416,20 @@ export function ContactForm({ contact, onOpenChange, onSaved, open }: ContactFor
                   id="account_search"
                   disabled={submitting}
                   onChange={(event) => setAccountSearch(event.target.value)}
+                  aria-label="Search accounts"
                   placeholder="Search accounts"
                   value={accountSearch}
                 />
                 <select
                   className="mt-2 h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
                   disabled={submitting}
+                  aria-invalid={Boolean(form.formState.errors.account_id)}
+                  aria-describedby={
+                    form.formState.errors.account_id
+                      ? "account_id-error"
+                      : undefined
+                  }
+                  aria-label="Account"
                   {...form.register("account_id")}
                 >
                   <option value="">No account</option>
@@ -289,6 +446,12 @@ export function ContactForm({ contact, onOpenChange, onSaved, open }: ContactFor
                   className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
                   disabled={submitting}
                   id="owner_id"
+                  aria-invalid={Boolean(form.formState.errors.owner_id)}
+                  aria-describedby={
+                    form.formState.errors.owner_id
+                      ? "owner_id-error"
+                      : undefined
+                  }
                   {...form.register("owner_id")}
                 >
                   <option value="">Current user</option>
@@ -303,7 +466,13 @@ export function ContactForm({ contact, onOpenChange, onSaved, open }: ContactFor
 
             <div>
               <Label>Tags</Label>
-              <TagInput disabled={submitting} onChange={(nextTags) => form.setValue("tags", nextTags, { shouldDirty: true })} value={tags} />
+              <TagInput
+                disabled={submitting}
+                onChange={(nextTags) =>
+                  form.setValue("tags", nextTags, { shouldDirty: true })
+                }
+                value={tags}
+              />
             </div>
 
             <div>
@@ -311,21 +480,37 @@ export function ContactForm({ contact, onOpenChange, onSaved, open }: ContactFor
               <div className="mt-2">
                 <CustomFieldsEditor
                   disabled={submitting}
-                  onChange={(rows: CustomFieldRow[]) => form.setValue("custom_fields", rows, { shouldDirty: true })}
+                  onChange={(rows: CustomFieldRow[]) =>
+                    form.setValue("custom_fields", rows, { shouldDirty: true })
+                  }
                   rows={customFields}
                 />
               </div>
             </div>
 
             {saveContact.isError ? (
-              <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">Could not save contact.</div>
+              <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+                {apiErrorDetail(saveContact.error, "Could not save contact.")}
+              </div>
             ) : null}
+            <div className="flex flex-wrap gap-2">
+              <RecordOptionsStatus query={accountsQuery} label="accounts" />
+            </div>
           </SheetBody>
           <SheetFooter>
-            <Button disabled={submitting} onClick={() => onOpenChange(false)} type="button" variant="outline">
+            <Button
+              disabled={submitting}
+              onClick={() => handleOpenChange(false)}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
-            <Button className="bg-[#2563EB] hover:bg-blue-700" disabled={submitting} type="submit">
+            <Button
+              className="bg-[var(--primary)] hover:bg-blue-700"
+              disabled={submitting}
+              type="submit"
+            >
               <Save className="h-4 w-4" aria-hidden="true" />
               Save Contact
             </Button>

@@ -1,3 +1,4 @@
+import { ReportingCurrency } from "@/components/reports/ReportingCurrency";
 import { format } from "date-fns";
 import { Suspense } from "react";
 
@@ -14,7 +15,10 @@ function StatsFallback() {
   return (
     <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       {["open", "leads", "tasks", "activities"].map((item) => (
-        <div className="rounded-lg border border-slate-200/70 bg-white p-5 shadow-sm" key={item}>
+        <div
+          className="rounded-lg border border-slate-200/70 bg-white p-5 shadow-sm"
+          key={item}
+        >
           <Skeleton className="h-4 w-28" />
           <Skeleton className="mt-3 h-8 w-20" />
           <Skeleton className="mt-4 h-4 w-32" />
@@ -60,11 +64,17 @@ export default function DashboardPage() {
   return (
     <div className="grid gap-6">
       <header className="flex flex-col gap-2 border-b border-slate-200/70 pb-5 sm:flex-row sm:items-end sm:justify-between">
-        <h1 className="text-2xl font-semibold tracking-normal text-[#0F2444]">Dashboard</h1>
-        <time className="text-sm font-medium text-[#64748B]" dateTime={new Date().toISOString()}>
+        <h1 className="text-2xl font-semibold tracking-normal text-[var(--navy)]">
+          Dashboard
+        </h1>
+        <time
+          className="text-sm font-medium text-[var(--muted-foreground)]"
+          dateTime={new Date().toISOString()}
+        >
           {today}
         </time>
       </header>
+      <ReportingCurrency />
 
       <Suspense fallback={<StatsFallback />}>
         <StatsRow />

@@ -4,16 +4,25 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import HTTPException, APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.auth.permissions import ACTIVITY_WRITE_ROLES, is_manager
 from app.dependencies import get_current_user, get_db, require_role
 from app.models import ActivityType, User
 from app.schemas.activities import ActivityCreate, ActivityResponse, ActivityUpdate, EmailLogCreate
+from app.services.linked_access import validate_linked_access
 from app.services import activities as activities_service
 
-router = APIRouter(prefix="/activities", tags=["Activities"])
+async def require_visible_activity(current_user: Annotated[User, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(get_db)], activity_id: UUID | None = None):
+    if activity_id is not None and not is_manager(current_user):
+        from app.models import Activity
+        result = await db.execute(select(Activity.id).where(Activity.id == activity_id, Activity.owner_id == current_user.id))
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(404, "Activity not found")
+
+router = APIRouter(dependencies=[Depends(require_visible_activity)], prefix="/activities", tags=["Activities"])
 
 
 @router.get("/", response_model=list[ActivityResponse])
@@ -55,6 +64,7 @@ async def create_activity(
     current_user: Annotated[User, Depends(require_role(*ACTIVITY_WRITE_ROLES))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ActivityResponse:
+    await validate_linked_access(db, current_user, activity_in)
     return await activities_service.create_activity(db, activity_in, current_user)
 
 
@@ -121,6 +131,7 @@ async def update_activity(
     current_user: Annotated[User, Depends(require_role(*ACTIVITY_WRITE_ROLES))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ActivityResponse:
+    await validate_linked_access(db, current_user, activity_in)
     return await activities_service.update_activity(db, activity_id, activity_in)
 
 

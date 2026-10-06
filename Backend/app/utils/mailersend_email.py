@@ -19,8 +19,8 @@ def _html_to_text(html: str) -> str:
 def send_email(to: str, subject: str, html: str, tags: list[str] | None = None) -> bool:
     """Send a real transactional email through the MailerSend API.
 
-    Returns True on success. When no API key is configured the send is a
-    dry-run (logged only) so local/dev environments behave as before.
+    Returns True only when the provider accepts the message. Missing
+    credentials are a failure, including in development.
 
     ``tags`` are attached to the message and echoed back in MailerSend's
     activity webhooks, which lets us map opens/clicks back to a campaign.
@@ -28,7 +28,7 @@ def send_email(to: str, subject: str, html: str, tags: list[str] | None = None) 
     settings = get_settings()
     if not settings.mailersend_api_key:
         logger.info("mailersend_dry_run to=%s subject=%s", to, subject)
-        return True
+        return False
 
     # Imported lazily so the dependency is only required when actually sending.
     from mailersend import EmailBuilder, MailerSendClient

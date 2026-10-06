@@ -27,8 +27,14 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { usePermissions } from "@/lib/permissions";
-import { cn, formatDate } from "@/lib/utils";
-import type { Milestone, MilestoneCreate, MilestoneUpdate, Project, ProjectDocument } from "@/types/api";
+import { cn, formatDate, toLocalDateTime } from "@/lib/utils";
+import type {
+  Milestone,
+  MilestoneCreate,
+  MilestoneUpdate,
+  Project,
+  ProjectDocument,
+} from "@/types/api";
 
 interface ProjectDetailClientProps {
   projectId: string;
@@ -66,7 +72,10 @@ function fileSizeLabel(size: number): string {
 }
 
 function portalBaseUrl(): string {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BETTER_AUTH_URL || (typeof window !== "undefined" ? window.location.origin : "");
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_BETTER_AUTH_URL ||
+    (typeof window !== "undefined" ? window.location.origin : "");
   return appUrl.replace(/\/+$/, "");
 }
 
@@ -80,7 +89,9 @@ function maskToken(token: string): string {
 
 function milestoneStats(milestones: Milestone[]) {
   const total = milestones.length;
-  const complete = milestones.filter((milestone) => Boolean(milestone.completed_at)).length;
+  const complete = milestones.filter((milestone) =>
+    Boolean(milestone.completed_at),
+  ).length;
   const percent = total > 0 ? Math.round((complete / total) * 100) : 0;
 
   return { complete, percent, total };
@@ -99,9 +110,42 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
   const [newMilestoneDueDate, setNewMilestoneDueDate] = useState("");
   const [milestoneError, setMilestoneError] = useState("");
   const [uploadError, setUploadError] = useState("");
-  const [milestoneToDelete, setMilestoneToDelete] = useState<Milestone | null>(null);
-  const [documentToDelete, setDocumentToDelete] = useState<ProjectDocument | null>(null);
+  const [milestoneToDelete, setMilestoneToDelete] = useState<Milestone | null>(
+    null,
+  );
+  const [documentToDelete, setDocumentToDelete] =
+    useState<ProjectDocument | null>(null);
 
+  const sharing = useMutation({
+    mutationFn: ({
+      rotate,
+      enabled,
+      expires,
+    }: {
+      rotate?: boolean;
+      enabled?: boolean;
+      expires?: string | null;
+    }) =>
+      rotate
+        ? api.post<Project>(`/projects/${projectId}/portal/rotate`)
+        : api.patch<Project>(`/projects/${projectId}`, {
+            portal_enabled: enabled,
+            portal_expires_at: expires,
+          }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+  const visibility = useMutation({
+    mutationFn: ({ id, visible }: { id: string; visible: boolean }) =>
+      api.patch(
+        `/projects/${projectId}/documents/${id}/visibility?visible=${visible}`,
+        {},
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
   const projectQuery = useQuery({
     queryFn: () => api.get<Project>(`/projects/${projectId}`),
     queryKey: ["projects", "detail", projectId],
@@ -111,63 +155,108 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
     queryKey: ["projects", "milestones", projectId],
   });
   const documentsQuery = useQuery({
-    queryFn: () => api.get<ProjectDocument[]>(`/projects/${projectId}/documents`),
+    queryFn: () =>
+      api.get<ProjectDocument[]>(`/projects/${projectId}/documents`),
     queryKey: ["projects", "documents", projectId],
   });
 
   const project = projectQuery.data;
   const milestones = useMemo(
-    () => [...(milestonesQuery.data ?? project?.milestones ?? [])].sort(compareDueDate),
+    () =>
+      [...(milestonesQuery.data ?? project?.milestones ?? [])].sort(
+        compareDueDate,
+      ),
     [milestonesQuery.data, project?.milestones],
   );
   const documents = documentsQuery.data ?? project?.documents ?? [];
   const stats = milestoneStats(milestones);
-  const portalLink = project ? `${portalBaseUrl()}/portal/${project.portal_token}` : "";
+  const portalLink = project
+    ? `${portalBaseUrl()}/portal/${project.portal_token}`
+    : "";
 
   const addMilestone = useMutation({
-    mutationFn: (payload: MilestoneCreate) => api.post<Milestone, MilestoneCreate>(`/projects/${projectId}/milestones`, payload),
+    mutationFn: (payload: MilestoneCreate) =>
+      api.post<Milestone, MilestoneCreate>(
+        `/projects/${projectId}/milestones`,
+        payload,
+      ),
     onSuccess: () => {
       setNewMilestoneTitle("");
       setNewMilestoneDueDate("");
       setMilestoneError("");
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
-      void queryClient.invalidateQueries({ queryKey: ["projects", "detail", projectId] });
-      void queryClient.invalidateQueries({ queryKey: ["projects", "milestones", projectId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", "detail", projectId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", "milestones", projectId],
+      });
     },
   });
 
   const toggleMilestone = useMutation({
-    mutationFn: ({ completedAt, milestoneId }: { completedAt: string | null; milestoneId: string }) =>
-      api.patch<Milestone, MilestoneUpdate>(`/projects/${projectId}/milestones/${milestoneId}`, { completed_at: completedAt }),
+    mutationFn: ({
+      completedAt,
+      milestoneId,
+    }: {
+      completedAt: string | null;
+      milestoneId: string;
+    }) =>
+      api.patch<Milestone, MilestoneUpdate>(
+        `/projects/${projectId}/milestones/${milestoneId}`,
+        { completed_at: completedAt },
+      ),
     onMutate: async ({ completedAt, milestoneId }) => {
-      await queryClient.cancelQueries({ queryKey: ["projects", "milestones", projectId] });
-      const previous = queryClient.getQueryData<Milestone[]>(["projects", "milestones", projectId]);
-      queryClient.setQueryData<Milestone[]>(["projects", "milestones", projectId], (current) =>
-        (current ?? milestones).map((milestone) =>
-          milestone.id === milestoneId ? { ...milestone, completed_at: completedAt } : milestone,
-        ),
+      await queryClient.cancelQueries({
+        queryKey: ["projects", "milestones", projectId],
+      });
+      const previous = queryClient.getQueryData<Milestone[]>([
+        "projects",
+        "milestones",
+        projectId,
+      ]);
+      queryClient.setQueryData<Milestone[]>(
+        ["projects", "milestones", projectId],
+        (current) =>
+          (current ?? milestones).map((milestone) =>
+            milestone.id === milestoneId
+              ? { ...milestone, completed_at: completedAt }
+              : milestone,
+          ),
       );
 
       return { previous };
     },
     onError: (_error, _milestoneId, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(["projects", "milestones", projectId], context.previous);
+        queryClient.setQueryData(
+          ["projects", "milestones", projectId],
+          context.previous,
+        );
       }
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
-      void queryClient.invalidateQueries({ queryKey: ["projects", "detail", projectId] });
-      void queryClient.invalidateQueries({ queryKey: ["projects", "milestones", projectId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", "detail", projectId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", "milestones", projectId],
+      });
     },
   });
 
   const deleteMilestone = useMutation({
-    mutationFn: (milestoneId: string) => api.delete<void>(`/projects/${projectId}/milestones/${milestoneId}`),
+    mutationFn: (milestoneId: string) =>
+      api.delete<void>(`/projects/${projectId}/milestones/${milestoneId}`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
-      void queryClient.invalidateQueries({ queryKey: ["projects", "detail", projectId] });
-      void queryClient.invalidateQueries({ queryKey: ["projects", "milestones", projectId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", "detail", projectId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", "milestones", projectId],
+      });
     },
   });
 
@@ -175,23 +264,35 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
     mutationFn: (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
-      return api.postForm<ProjectDocument>(`/projects/${projectId}/documents`, formData);
+      return api.postForm<ProjectDocument>(
+        `/projects/${projectId}/documents`,
+        formData,
+      );
     },
     onSuccess: () => {
       setUploadError("");
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
-      void queryClient.invalidateQueries({ queryKey: ["projects", "detail", projectId] });
-      void queryClient.invalidateQueries({ queryKey: ["projects", "documents", projectId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", "detail", projectId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", "documents", projectId],
+      });
     },
   });
 
   const deleteDocument = useMutation({
-    mutationFn: (documentId: string) => api.delete<void>(`/projects/${projectId}/documents/${documentId}`),
+    mutationFn: (documentId: string) =>
+      api.delete<void>(`/projects/${projectId}/documents/${documentId}`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["projects", "detail", projectId] });
-      void queryClient.invalidateQueries({ queryKey: ["projects", "documents", projectId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", "detail", projectId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", "documents", projectId],
+      });
     },
   });
   const archiveProject = useMutation({
@@ -277,7 +378,11 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
   }
 
   if (projectQuery.isError || !project) {
-    return <div className="rounded-xl border border-red-100 bg-white p-5 text-sm text-red-700 shadow-sm">Could not load project.</div>;
+    return (
+      <div className="rounded-xl border border-red-100 bg-white p-5 text-sm text-red-700 shadow-sm">
+        Could not load project.
+      </div>
+    );
   }
 
   return (
@@ -286,16 +391,25 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-2xl font-semibold tracking-normal text-[#0F2444]">{project.name}</h1>
+              <h1 className="text-2xl font-semibold tracking-normal text-[var(--navy)]">
+                {project.name}
+              </h1>
               <HealthPill health={project.health} size="lg" />
             </div>
-            <Link className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-[#2563EB] hover:underline" href={`/accounts/${project.account_id}`}>
+            <Link
+              className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-[var(--primary)] hover:underline"
+              href={`/accounts/${project.account_id}`}
+            >
               <LinkIcon className="h-4 w-4" aria-hidden="true" />
               {project.account_name ?? "Account"}
             </Link>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => void copyText(portalLink, "portal")} type="button" variant="outline">
+            <Button
+              onClick={() => void copyText(portalLink, "portal")}
+              type="button"
+              variant="outline"
+            >
               <Copy className="h-4 w-4" aria-hidden="true" />
               {copied ? "Copied" : "Copy Portal Link"}
             </Button>
@@ -305,7 +419,11 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
                   <Edit className="h-4 w-4" aria-hidden="true" />
                   Edit
                 </Button>
-                <Button onClick={() => setConfirmArchiveProject(true)} type="button" variant="outline">
+                <Button
+                  onClick={() => setConfirmArchiveProject(true)}
+                  type="button"
+                  variant="outline"
+                >
                   <Archive className="h-4 w-4" aria-hidden="true" />
                   Archive Project
                 </Button>
@@ -316,13 +434,18 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
 
         <div className="mt-6">
           <div className="flex items-center justify-between text-sm">
-            <span className="font-medium text-[#0F2444]">
+            <span className="font-medium text-[var(--navy)]">
               {stats.complete} of {stats.total} complete
             </span>
-            <span className="text-[#64748B]">{stats.percent}% milestone progress</span>
+            <span className="text-[var(--muted-foreground)]">
+              {stats.percent}% milestone progress
+            </span>
           </div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full rounded-full bg-[#2563EB]" style={{ width: `${stats.percent}%` }} />
+            <div
+              className="h-full rounded-full bg-[var(--primary)]"
+              style={{ width: `${stats.percent}%` }}
+            />
           </div>
         </div>
       </section>
@@ -331,8 +454,12 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
         <section className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-base font-semibold text-[#0F2444]">Milestones</h2>
-              <p className="mt-1 text-sm text-[#64748B]">Delivery checkpoints sorted by due date.</p>
+              <h2 className="text-base font-semibold text-[var(--navy)]">
+                Milestones
+              </h2>
+              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                Delivery checkpoints sorted by due date.
+              </p>
             </div>
           </div>
 
@@ -346,7 +473,9 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
             ) : null}
 
             {!milestonesQuery.isLoading && milestones.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-[#64748B]">No milestones yet.</div>
+              <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-[var(--muted-foreground)]">
+                No milestones yet.
+              </div>
             ) : null}
 
             {milestones.map((milestone) => {
@@ -354,14 +483,21 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
               const completed = Boolean(milestone.completed_at);
 
               return (
-                <div className="flex items-start gap-4 rounded-lg border border-slate-100 bg-white p-4 shadow-[0_1px_0_rgba(15,36,68,0.03)]" key={milestone.id}>
+                <div
+                  className="flex items-start gap-4 rounded-lg border border-slate-100 bg-white p-4 shadow-[0_1px_0_rgba(15,36,68,0.03)]"
+                  key={milestone.id}
+                >
                   <button
-                    aria-label={completed ? "Mark milestone incomplete" : "Complete milestone"}
+                    aria-label={
+                      completed
+                        ? "Mark milestone incomplete"
+                        : "Complete milestone"
+                    }
                     className={cn(
                       "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border transition",
                       completed
                         ? "border-emerald-500 bg-emerald-500 text-white"
-                        : "border-slate-300 bg-white text-transparent hover:border-[#2563EB] hover:text-[#2563EB]",
+                        : "border-slate-300 bg-white text-transparent hover:border-[var(--primary)] hover:text-[var(--primary)]",
                     )}
                     disabled={!canWriteProjects || toggleMilestone.isPending}
                     onClick={() => handleToggleMilestone(milestone)}
@@ -372,15 +508,43 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
                   </button>
 
                   <div className="min-w-0 flex-1">
-                    <p className={cn("font-semibold text-[#0F2444]", completed && "text-[#64748B] line-through")}>{milestone.title}</p>
+                    <p
+                      className={cn(
+                        "font-semibold text-[var(--navy)]",
+                        completed &&
+                          "text-[var(--muted-foreground)] line-through",
+                      )}
+                    >
+                      {milestone.title}
+                    </p>
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-                      <span className={cn("inline-flex items-center gap-1.5", overdue ? "font-medium text-red-600" : "text-[#64748B]")}>
-                        {overdue ? <AlertTriangle className="h-4 w-4" aria-hidden="true" /> : <CalendarDays className="h-4 w-4" aria-hidden="true" />}
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1.5",
+                          overdue
+                            ? "font-medium text-red-600"
+                            : "text-[var(--muted-foreground)]",
+                        )}
+                      >
+                        {overdue ? (
+                          <AlertTriangle
+                            className="h-4 w-4"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <CalendarDays
+                            className="h-4 w-4"
+                            aria-hidden="true"
+                          />
+                        )}
                         Due {formatDate(milestone.due_date)}
                       </span>
                       {completed && milestone.completed_at ? (
                         <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700">
-                          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                          <CheckCircle2
+                            className="h-4 w-4"
+                            aria-hidden="true"
+                          />
                           Completed {formatDate(milestone.completed_at)}
                         </span>
                       ) : null}
@@ -396,7 +560,10 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
                       type="button"
                       variant="ghost"
                     >
-                      <Trash2 className="h-4 w-4 text-red-600" aria-hidden="true" />
+                      <Trash2
+                        className="h-4 w-4 text-red-600"
+                        aria-hidden="true"
+                      />
                     </Button>
                   ) : null}
                 </div>
@@ -405,7 +572,10 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
           </div>
 
           {canWriteProjects ? (
-            <form className="mt-5 rounded-lg border border-slate-100 bg-slate-50 p-4" onSubmit={handleAddMilestone}>
+            <form
+              className="mt-5 rounded-lg border border-slate-100 bg-slate-50 p-4"
+              onSubmit={handleAddMilestone}
+            >
               <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
                 <Input
                   disabled={addMilestone.isPending}
@@ -413,14 +583,27 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
                   placeholder="Milestone title"
                   value={newMilestoneTitle}
                 />
-                <Input disabled={addMilestone.isPending} onChange={(event) => setNewMilestoneDueDate(event.target.value)} type="date" value={newMilestoneDueDate} />
+                <Input
+                  disabled={addMilestone.isPending}
+                  onChange={(event) =>
+                    setNewMilestoneDueDate(event.target.value)
+                  }
+                  type="date"
+                  value={newMilestoneDueDate}
+                />
                 <Button disabled={addMilestone.isPending} type="submit">
                   <Plus className="h-4 w-4" aria-hidden="true" />
                   Add Milestone
                 </Button>
               </div>
-              {milestoneError ? <p className="mt-2 text-xs text-red-600">{milestoneError}</p> : null}
-              {addMilestone.isError ? <p className="mt-2 text-xs text-red-600">Could not add milestone.</p> : null}
+              {milestoneError ? (
+                <p className="mt-2 text-xs text-red-600">{milestoneError}</p>
+              ) : null}
+              {addMilestone.isError ? (
+                <p className="mt-2 text-xs text-red-600">
+                  Could not add milestone.
+                </p>
+              ) : null}
             </form>
           ) : null}
         </section>
@@ -428,16 +611,26 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
         <aside className="grid gap-4 content-start">
           <section className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-base font-semibold text-[#0F2444]">Documents</h2>
+              <h2 className="text-base font-semibold text-[var(--navy)]">
+                Documents
+              </h2>
               {canWriteProjects ? (
                 <>
-                  <Button disabled={uploadDocument.isPending} onClick={() => fileInputRef.current?.click()} size="sm" type="button" variant="outline">
+                  <Button
+                    disabled={uploadDocument.isPending}
+                    onClick={() => fileInputRef.current?.click()}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
                     <Upload className="h-4 w-4" aria-hidden="true" />
                     Upload
                   </Button>
                   <input
                     className="hidden"
-                    onChange={(event) => handleDocumentChange(event.target.files?.[0])}
+                    onChange={(event) =>
+                      handleDocumentChange(event.target.files?.[0])
+                    }
                     ref={fileInputRef}
                     type="file"
                   />
@@ -446,15 +639,21 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
             </div>
 
             {uploadDocument.isPending ? (
-              <div className="mt-4 rounded-lg bg-[#EFF6FF] p-3 text-sm text-[#2563EB]">
+              <div className="mt-4 rounded-lg bg-[var(--background)] p-3 text-sm text-[var(--primary)]">
                 Uploading document...
                 <div className="mt-2 h-1 overflow-hidden rounded-full bg-blue-100">
-                  <div className="h-full w-2/3 animate-pulse rounded-full bg-[#2563EB]" />
+                  <div className="h-full w-2/3 animate-pulse rounded-full bg-[var(--primary)]" />
                 </div>
               </div>
             ) : null}
-            {uploadError ? <p className="mt-3 text-xs text-red-600">{uploadError}</p> : null}
-            {uploadDocument.isError ? <p className="mt-3 text-xs text-red-600">Could not upload document.</p> : null}
+            {uploadError ? (
+              <p className="mt-3 text-xs text-red-600">{uploadError}</p>
+            ) : null}
+            {uploadDocument.isError ? (
+              <p className="mt-3 text-xs text-red-600">
+                Could not upload document.
+              </p>
+            ) : null}
 
             <div className="mt-4 grid gap-3">
               {documentsQuery.isLoading ? (
@@ -463,24 +662,56 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
                   <Skeleton className="h-16 rounded-lg" />
                 </>
               ) : null}
-              {!documentsQuery.isLoading && documents.length === 0 ? <p className="text-sm text-[#64748B]">No documents uploaded yet.</p> : null}
+              {!documentsQuery.isLoading && documents.length === 0 ? (
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  No documents uploaded yet.
+                </p>
+              ) : null}
               {documents.map((document) => (
-                <div className="rounded-lg border border-slate-100 p-3" key={document.id}>
+                <div
+                  className="rounded-lg border border-slate-100 p-3"
+                  key={document.id}
+                >
                   <div className="flex items-start gap-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#EFF6FF] text-[#2563EB]">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--background)] text-[var(--primary)]">
                       <FileText className="h-5 w-5" aria-hidden="true" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-[#0F2444]">{document.filename}</p>
-                      <p className="mt-1 text-xs text-[#64748B]">
-                        {fileSizeLabel(document.file_size)} - {formatDate(document.created_at)}
+                      <p className="truncate text-sm font-semibold text-[var(--navy)]">
+                        {document.filename}
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                        {fileSizeLabel(document.file_size)} -{" "}
+                        {formatDate(document.created_at)}
                       </p>
                     </div>
                   </div>
+                  {canWriteProjects && (
+                    <label className="mt-3 flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={document.customer_visible}
+                        disabled={visibility.isPending}
+                        onChange={(e) =>
+                          visibility.mutate({
+                            id: document.id,
+                            visible: e.target.checked,
+                          })
+                        }
+                      />
+                      Shared with customer
+                    </label>
+                  )}
                   <div className="mt-3 flex gap-2">
                     <a
                       className="inline-flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-800 hover:bg-slate-50"
-                      href={document.download_url}
+                      href={document.download_url || undefined}
+                      aria-disabled={!document.download_url}
+                      title={
+                        !document.download_url
+                          ? "Storage is unavailable. Contact your administrator."
+                          : undefined
+                      }
                       rel="noreferrer"
                       target="_blank"
                     >
@@ -488,8 +719,17 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
                       Download
                     </a>
                     {canWriteProjects ? (
-                      <Button disabled={deleteDocument.isPending} onClick={() => handleDeleteDocument(document)} size="sm" type="button" variant="ghost">
-                        <Trash2 className="h-4 w-4 text-red-600" aria-hidden="true" />
+                      <Button
+                        disabled={deleteDocument.isPending}
+                        onClick={() => handleDeleteDocument(document)}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Trash2
+                          className="h-4 w-4 text-red-600"
+                          aria-hidden="true"
+                        />
                       </Button>
                     ) : null}
                   </div>
@@ -499,37 +739,115 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
           </section>
 
           <section className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-[#0F2444]">Project Info</h2>
+            <h2 className="text-base font-semibold text-[var(--navy)]">
+              Project Info
+            </h2>
             <dl className="mt-4 grid gap-3 text-sm">
               {project.deal_id ? (
                 <div>
-                  <dt className="text-[#64748B]">Source Deal</dt>
+                  <dt className="text-[var(--muted-foreground)]">
+                    Source Deal
+                  </dt>
                   <dd className="mt-1">
-                    <Link className="font-semibold text-[#2563EB] hover:underline" href={`/deals/${project.deal_id}`}>
+                    <Link
+                      className="font-semibold text-[var(--primary)] hover:underline"
+                      href={`/deals/${project.deal_id}`}
+                    >
                       View deal
                     </Link>
                   </dd>
                 </div>
               ) : null}
               <div>
-                <dt className="text-[#64748B]">Status</dt>
-                <dd className="mt-1 font-semibold capitalize text-[#0F2444]">{project.status}</dd>
-              </div>
-              <div>
-                <dt className="text-[#64748B]">Dates</dt>
-                <dd className="mt-1 font-semibold text-[#0F2444]">
-                  {formatDate(project.start_date)} - {project.end_date ? formatDate(project.end_date) : "No end date"}
+                <dt className="text-[var(--muted-foreground)]">Status</dt>
+                <dd className="mt-1 font-semibold capitalize text-[var(--navy)]">
+                  {project.status}
                 </dd>
               </div>
               <div>
-                <dt className="text-[#64748B]">Owner</dt>
-                <dd className="mt-1 font-semibold text-[#0F2444]">{project.owner_name ?? "Unassigned"}</dd>
+                <dt className="text-[var(--muted-foreground)]">Dates</dt>
+                <dd className="mt-1 font-semibold text-[var(--navy)]">
+                  {formatDate(project.start_date)} -{" "}
+                  {project.end_date
+                    ? formatDate(project.end_date)
+                    : "No end date"}
+                </dd>
               </div>
               <div>
-                <dt className="text-[#64748B]">Portal Token</dt>
+                <dt className="text-[var(--muted-foreground)]">Owner</dt>
+                <dd className="mt-1 font-semibold text-[var(--navy)]">
+                  {project.owner_name ?? "Unassigned"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[var(--muted-foreground)]">Portal Token</dt>
                 <dd className="mt-1 flex items-center gap-2">
-                  <code className="rounded-md bg-slate-100 px-2 py-1 text-xs text-[#0F2444]">{maskToken(project.portal_token)}</code>
-                  <Button onClick={() => void copyText(project.portal_token, "token")} size="sm" type="button" variant="outline">
+                  {canWriteProjects && (
+                    <div className="grid gap-3 text-sm">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={project.portal_enabled}
+                          disabled={sharing.isPending}
+                          onChange={(e) =>
+                            sharing.mutate({ enabled: e.target.checked })
+                          }
+                        />
+                        Public portal enabled
+                      </label>
+                      <label>
+                        Link expiry
+                        <input
+                          aria-label="Portal expiry"
+                          type="date"
+                          className="ml-2 rounded border p-2"
+                          defaultValue={
+                            project.portal_expires_at
+                              ? toLocalDateTime(
+                                  project.portal_expires_at,
+                                ).slice(0, 10)
+                              : ""
+                          }
+                          onChange={(e) =>
+                            sharing.mutate({
+                              expires: e.target.value
+                                ? new Date(
+                                    `${e.target.value}T23:59:59`,
+                                  ).toISOString()
+                                : null,
+                            })
+                          }
+                        />
+                      </label>
+                      <Button
+                        variant="outline"
+                        disabled={sharing.isPending}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              "Replace the portal link? The old link will stop working immediately.",
+                            )
+                          )
+                            sharing.mutate({ rotate: true });
+                        }}
+                      >
+                        Replace sharing link
+                      </Button>
+                      <p>
+                        Only documents marked “Shared with customer” appear in
+                        the portal.
+                      </p>
+                    </div>
+                  )}
+                  <code className="rounded-md bg-slate-100 px-2 py-1 text-xs text-[var(--navy)]">
+                    {maskToken(project.portal_token)}
+                  </code>
+                  <Button
+                    onClick={() => void copyText(project.portal_token, "token")}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
                     <Copy className="h-4 w-4" aria-hidden="true" />
                     {tokenCopied ? "Copied" : "Copy"}
                   </Button>
@@ -542,7 +860,12 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
 
       {canWriteProjects ? (
         <>
-          <ProjectForm onOpenChange={setEditOpen} onSaved={() => void projectQuery.refetch()} open={editOpen} project={project} />
+          <ProjectForm
+            onOpenChange={setEditOpen}
+            onSaved={() => void projectQuery.refetch()}
+            open={editOpen}
+            project={project}
+          />
           <ConfirmDialog
             confirmLabel="Confirm"
             isPending={deleteMilestone.isPending}

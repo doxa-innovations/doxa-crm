@@ -9,13 +9,32 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
-import type { Lead, LeadConvertRequest, LeadConvertResponse, Pipeline } from "@/types/api";
+import {
+  useRecordOptions,
+  RecordOptionsStatus,
+} from "@/hooks/useRecordOptions";
+import type {
+  Account,
+  Lead,
+  LeadConvertRequest,
+  LeadConvertResponse,
+  Pipeline,
+} from "@/types/api";
 
 const convertSchema = z.object({
+  account_id: z.string().optional(),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  expected_close: z.string().optional(),
   account_name: z.string().optional(),
   create_account: z.boolean(),
   create_deal: z.boolean(),
@@ -36,6 +55,9 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
   const queryClient = useQueryClient();
   const form = useForm<ConvertFormValues>({
     defaultValues: {
+      currency: "USD",
+      account_id: "",
+      expected_close: "",
       account_name: lead.company,
       create_account: true,
       create_deal: false,
@@ -45,6 +67,10 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
     },
     resolver: zodResolver(convertSchema),
   });
+  const accountsQuery = useRecordOptions<Account>("/accounts/", {}, [
+    "accounts",
+    "convert",
+  ]);
   const createAccount = form.watch("create_account");
   const createDeal = form.watch("create_deal");
   const isAlreadyConverted = lead.status === "converted";
@@ -53,11 +79,16 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
     queryFn: () => api.get<Pipeline[]>("/pipelines/"),
     queryKey: ["pipelines", "convert-select"],
   });
-  const defaultPipeline = (pipelinesQuery.data ?? []).find((pipeline) => pipeline.is_default) ?? pipelinesQuery.data?.[0];
+  const defaultPipeline =
+    (pipelinesQuery.data ?? []).find((pipeline) => pipeline.is_default) ??
+    pipelinesQuery.data?.[0];
 
   useEffect(() => {
     if (open) {
       form.reset({
+        currency: "USD",
+        account_id: "",
+        expected_close: "",
         account_name: lead.company,
         create_account: true,
         create_deal: false,
@@ -76,14 +107,26 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
 
   const convertLead = useMutation({
     mutationFn: (values: ConvertFormValues) =>
-      api.post<LeadConvertResponse, LeadConvertRequest>(`/leads/${lead.id}/convert`, {
-        account_name: values.create_account ? values.account_name || lead.company : null,
-        create_account: values.create_account,
-        create_deal: values.create_deal,
-        deal_title: values.create_deal ? values.deal_title || `${lead.company} opportunity` : null,
-        deal_value: values.create_deal ? Number(values.deal_value || 0) : null,
-        pipeline_id: values.create_deal ? values.pipeline_id || null : null,
-      }),
+      api.post<LeadConvertResponse, LeadConvertRequest>(
+        `/leads/${lead.id}/convert`,
+        {
+          account_id: values.create_account ? null : values.account_id || null,
+          currency: values.currency,
+          expected_close: values.expected_close || null,
+          account_name: values.create_account
+            ? values.account_name || lead.company
+            : null,
+          create_account: values.create_account,
+          create_deal: values.create_deal,
+          deal_title: values.create_deal
+            ? values.deal_title || `${lead.company} opportunity`
+            : null,
+          deal_value: values.create_deal
+            ? Number(values.deal_value || 0)
+            : null,
+          pipeline_id: values.create_deal ? values.pipeline_id || null : null,
+        },
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["leads"] });
       void queryClient.invalidateQueries({ queryKey: ["contacts"] });
@@ -92,7 +135,9 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
     meta: {
-      successMessage: isAlreadyConverted ? "Contact record ready" : "Lead converted",
+      successMessage: isAlreadyConverted
+        ? "Contact record ready"
+        : "Lead converted",
     },
   });
 
@@ -110,7 +155,9 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
     >
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{isAlreadyConverted ? "Lead Contact" : "Convert Lead"}</DialogTitle>
+          <DialogTitle>
+            {isAlreadyConverted ? "Lead Contact" : "Convert Lead"}
+          </DialogTitle>
           <DialogDescription>
             {isAlreadyConverted
               ? "Find the contact record for this converted lead."
@@ -127,16 +174,25 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
               </div>
             </div>
             <div className="grid gap-2 text-sm">
-              <Link className="font-medium text-[#2563EB] hover:underline" href={`/contacts/${result.contact_id}`}>
+              <Link
+                className="font-medium text-[var(--primary)] hover:underline"
+                href={`/contacts/${result.contact_id}`}
+              >
                 Open contact
               </Link>
               {result.account_id ? (
-                <Link className="font-medium text-[#2563EB] hover:underline" href={`/accounts/${result.account_id}`}>
+                <Link
+                  className="font-medium text-[var(--primary)] hover:underline"
+                  href={`/accounts/${result.account_id}`}
+                >
                   Open account
                 </Link>
               ) : null}
               {result.deal_id ? (
-                <Link className="font-medium text-[#2563EB] hover:underline" href={`/deals/${result.deal_id}`}>
+                <Link
+                  className="font-medium text-[var(--primary)] hover:underline"
+                  href={`/deals/${result.deal_id}`}
+                >
                   Open deal
                 </Link>
               ) : null}
@@ -148,31 +204,92 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
             </div>
           </div>
         ) : (
-          <form className="grid gap-4" onSubmit={form.handleSubmit((values) => convertLead.mutate(values))}>
-            <label className="flex items-center gap-2 text-sm font-medium text-[#0F2444]">
-              <input className="h-4 w-4 rounded border-slate-300" type="checkbox" {...form.register("create_account")} />
+          <form
+            className="grid gap-4"
+            onSubmit={form.handleSubmit((values) => convertLead.mutate(values))}
+          >
+            {!createAccount && (
+              <label className="grid gap-2 text-sm">
+                Existing account
+                <select
+                  className="rounded border p-2"
+                  {...form.register("account_id")}
+                >
+                  <option value="">No account</option>
+                  {accountsQuery.data?.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+                <RecordOptionsStatus query={accountsQuery} label="accounts" />
+              </label>
+            )}
+            {createDeal && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-2 text-sm">
+                  Currency
+                  <Input
+                    {...form.register("currency")}
+                    maxLength={3}
+                    pattern="[A-Z]{3}"
+                    required
+                  />
+                </label>
+                <label className="grid gap-2 text-sm">
+                  Expected close
+                  <Input
+                    type="date"
+                    {...form.register("expected_close")}
+                    required
+                  />
+                </label>
+              </div>
+            )}
+            <label className="flex items-center gap-2 text-sm font-medium text-[var(--navy)]">
+              <input
+                className="h-4 w-4 rounded border-slate-300"
+                type="checkbox"
+                {...form.register("create_account")}
+              />
               Create Account?
             </label>
             {createAccount ? (
               <div>
                 <Label htmlFor="convert_account_name">Account Name</Label>
-                <Input id="convert_account_name" {...form.register("account_name")} />
+                <Input
+                  id="convert_account_name"
+                  {...form.register("account_name")}
+                />
               </div>
             ) : null}
 
-            <label className="flex items-center gap-2 text-sm font-medium text-[#0F2444]">
-              <input className="h-4 w-4 rounded border-slate-300" type="checkbox" {...form.register("create_deal")} />
+            <label className="flex items-center gap-2 text-sm font-medium text-[var(--navy)]">
+              <input
+                className="h-4 w-4 rounded border-slate-300"
+                type="checkbox"
+                {...form.register("create_deal")}
+              />
               Create Deal?
             </label>
             {createDeal ? (
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
                   <Label htmlFor="convert_deal_title">Deal Title</Label>
-                  <Input id="convert_deal_title" {...form.register("deal_title")} />
+                  <Input
+                    id="convert_deal_title"
+                    {...form.register("deal_title")}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="convert_deal_value">Value</Label>
-                  <Input id="convert_deal_value" min="0" step="100" type="number" {...form.register("deal_value")} />
+                  <Input
+                    id="convert_deal_value"
+                    min="0"
+                    step="100"
+                    type="number"
+                    {...form.register("deal_value")}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="convert_pipeline">Pipeline</Label>
@@ -193,21 +310,35 @@ export function ConvertModal({ lead, onOpenChange, open }: ConvertModalProps) {
 
             {createDeal && !createAccount ? (
               <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Deal conversion requires an existing account named {lead.company}.
+                Deal conversion requires an existing account named{" "}
+                {lead.company}.
               </div>
             ) : null}
             {isAlreadyConverted ? (
               <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                This lead is already marked converted. Submitting will find the existing contact, or create it if missing.
+                This lead is already marked converted. Submitting will find the
+                existing contact, or create it if missing.
               </div>
             ) : null}
-            {convertLead.isError ? <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">Could not convert lead.</div> : null}
+            {convertLead.isError ? (
+              <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+                Could not convert lead.
+              </div>
+            ) : null}
 
             <div className="flex justify-end gap-3">
-              <Button onClick={() => onOpenChange(false)} type="button" variant="outline">
+              <Button
+                onClick={() => onOpenChange(false)}
+                type="button"
+                variant="outline"
+              >
                 Cancel
               </Button>
-              <Button className="bg-[#2563EB] hover:bg-blue-700" disabled={convertLead.isPending} type="submit">
+              <Button
+                className="bg-[var(--primary)] hover:bg-blue-700"
+                disabled={convertLead.isPending}
+                type="submit"
+              >
                 {isAlreadyConverted ? "Find Contact" : "Convert Lead"}
               </Button>
             </div>

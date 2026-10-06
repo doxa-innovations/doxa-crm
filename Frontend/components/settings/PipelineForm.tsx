@@ -8,7 +8,13 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
@@ -34,7 +40,11 @@ function defaultValues(): PipelineFormValues {
   };
 }
 
-export function PipelineForm({ onOpenChange, onSaved, open }: PipelineFormProps) {
+export function PipelineForm({
+  onOpenChange,
+  onSaved,
+  open,
+}: PipelineFormProps) {
   const queryClient = useQueryClient();
   const form = useForm<PipelineFormValues>({
     defaultValues: defaultValues(),
@@ -68,27 +78,61 @@ export function PipelineForm({ onOpenChange, onSaved, open }: PipelineFormProps)
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>New Pipeline</DialogTitle>
-          <DialogDescription>Create a pipeline, then add stages in order.</DialogDescription>
+          <DialogDescription>
+            Create a pipeline, then add stages in order.
+          </DialogDescription>
         </DialogHeader>
-        <form className="grid gap-5" onSubmit={form.handleSubmit((values) => createPipeline.mutate(values))}>
+        <form
+          className="grid gap-5"
+          onSubmit={form.handleSubmit((values) =>
+            createPipeline.mutate(values),
+          )}
+        >
           <div>
             <Label htmlFor="pipeline_name">Pipeline Name</Label>
-            <Input id="pipeline_name" disabled={submitting} {...form.register("name")} />
-            {form.formState.errors.name?.message ? <p className="mt-1 text-xs text-red-600">{form.formState.errors.name.message}</p> : null}
+            <Input
+              id="pipeline_name"
+              disabled={submitting}
+              {...form.register("name")}
+            />
+            {form.formState.errors.name?.message ? (
+              <p className="mt-1 text-xs text-red-600">
+                {form.formState.errors.name.message}
+              </p>
+            ) : null}
           </div>
 
-          <label className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 text-sm text-[#0F2444]">
-            <input className="h-4 w-4 rounded border-slate-300 text-[#2563EB]" disabled={submitting} type="checkbox" {...form.register("is_default")} />
+          <label className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 text-sm text-[var(--navy)]">
+            <input
+              className="h-4 w-4 rounded border-slate-300 text-[var(--primary)]"
+              disabled={submitting}
+              type="checkbox"
+              {...form.register("is_default")}
+            />
             Is Default
           </label>
 
-          {createPipeline.isError ? <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">Could not create pipeline.</div> : null}
+          {createPipeline.isError ? (
+            <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+              Could not create pipeline.
+            </div>
+          ) : null}
 
           <div className="grid gap-3 sm:flex sm:justify-end">
-            <Button className="w-full sm:w-auto" disabled={submitting} onClick={() => onOpenChange(false)} type="button" variant="outline">
+            <Button
+              className="w-full sm:w-auto"
+              disabled={submitting}
+              onClick={() => onOpenChange(false)}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
-            <Button className="w-full sm:w-auto" disabled={submitting} type="submit">
+            <Button
+              className="w-full sm:w-auto"
+              disabled={submitting}
+              type="submit"
+            >
               <Save className="h-4 w-4" aria-hidden="true" />
               Save Pipeline
             </Button>

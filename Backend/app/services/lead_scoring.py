@@ -20,7 +20,7 @@ def _is_company_email(email: str) -> bool:
     return bool(domain and domain not in FREE_EMAIL_DOMAINS)
 
 
-async def calculate_lead_score(db: AsyncSession, lead: Lead) -> int:
+def base_lead_score(lead: Lead) -> int:
     score = 0
 
     if _is_company_email(lead.email):
@@ -31,6 +31,12 @@ async def calculate_lead_score(db: AsyncSession, lead: Lead) -> int:
 
     if lead.company and lead.company.strip():
         score += 20
+
+    return score
+
+
+async def calculate_lead_score(db: AsyncSession, lead: Lead) -> int:
+    score = base_lead_score(lead)
 
     activity_count_result = await db.execute(
         select(func.count(Activity.id)).where(Activity.lead_id == lead.id)

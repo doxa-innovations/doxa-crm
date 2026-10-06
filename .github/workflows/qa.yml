@@ -1,0 +1,67 @@
+name: CRM regression checks
+on: [pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  local-stack:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: crmqa
+          POSTGRES_PASSWORD: local-audit-only
+          POSTGRES_DB: crmqa
+        ports: ["55439:5432"]
+        options: --health-cmd="pg_isready -U crmqa" --health-interval=5s --health-retries=10
+      redis:
+        image: redis:7
+        ports: ["56379:6379"]
+    env:
+      DATABASE_URL: postgresql+asyncpg://crmqa:local-audit-only@127.0.0.1:55439/crmqa
+      AUTH_DATABASE_URL: postgresql://crmqa:local-audit-only@127.0.0.1:55439/crmqa
+      REDIS_URL: redis://127.0.0.1:56379/0
+      SECRET_KEY: local-audit-isolated-secret-not-for-production-20261004
+      BETTER_AUTH_SECRET: local-audit-isolated-secret-not-for-production-20261004
+      WEBHOOK_SECRET: local-audit-isolated-webhook-not-for-production
+      ENVIRONMENT: test
+      BETTER_AUTH_URL: http://127.0.0.1:3105
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:8105
+      API_INTERNAL_URL: http://127.0.0.1:8105
+      PUBLIC_APP_URL: http://127.0.0.1:3105
+      CORS_ORIGINS: http://127.0.0.1:3105
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm, cache-dependency-path: Frontend/package-lock.json}
+      - run: pip install -r Backend/requirements.txt
+      - run: npm ci --legacy-peer-deps
+        working-directory: Frontend
+      - run: python -m pytest -q
+        working-directory: Backend
+      - run: python -m alembic upgrade head && python scripts/seed_demo_data.py
+        working-directory: Backend
+      - run: node scripts/migrate-auth.mjs && node scripts/seed-local-qa.mjs
+        working-directory: Frontend
+      - run: npm run typecheck && npm test && npm run build
+        working-directory: Frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: Frontend
+      - run: |
+          (cd Backend && python -m uvicorn app.main:app --host 127.0.0.1 --port 8105 > /tmp/api.log 2>&1) &
+          (cd Frontend && npm start -- --hostname 127.0.0.1 --port 3105 > /tmp/frontend.log 2>&1) &
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3105/login > /dev/null && curl -fsS http://127.0.0.1:8105/health > /dev/null; then break; fi
+            sleep 1
+          done
+      - run: CRM_INTEGRATION=1 python -m pytest integration -q
+        working-directory: Backend
+      - run: npm run test:e2e
+        working-directory: Frontend
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: local-qa-evidence
+          path: Frontend/test-results/

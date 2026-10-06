@@ -73,7 +73,7 @@ async def log_task_completed(
             task_log.status = "success"
             task_log.finished_at = datetime.now(timezone.utc)
             task_log.error = None
-            task_log.details = {"result": _json_safe(result)}
+            task_log.details = {**(task_log.details or {}), "result": _json_safe(result)}
             await db.commit()
     except Exception:
         logger.exception("task_log_completion_failed task_name=%s task_id=%s", task_name, task_id)
@@ -101,7 +101,7 @@ async def log_task_failed(
             task_log.status = "error"
             task_log.finished_at = datetime.now(timezone.utc)
             task_log.error = str(exc)
-            task_log.details = {"error_type": exc.__class__.__name__}
+            task_log.details = {**(task_log.details or {}), "error_type": exc.__class__.__name__}
             await db.commit()
     except Exception:
         logger.exception("task_log_failure_failed task_name=%s task_id=%s", task_name, task_id)

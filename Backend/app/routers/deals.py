@@ -34,6 +34,7 @@ async def list_deals(
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     pipeline_id: UUID | None = None,
     stage_id: UUID | None = None,
+    search: str | None = None,
     owner_id: UUID | None = None,
     status_filter: DealStatus | None = Query(default=None, alias="status"),
     date_from: date | None = None,
@@ -46,6 +47,7 @@ async def list_deals(
         page_size=page_size,
         pipeline_id=pipeline_id,
         stage_id=stage_id,
+        search=search,
         owner_id=owner_id,
         status_filter=status_filter,
         date_from=date_from,
@@ -72,6 +74,7 @@ async def get_forecast(
     date_from: date | None = None,
     date_to: date | None = None,
     owner_id: UUID | None = None,
+    currency: Annotated[str, Query(pattern="^[A-Z]{3}$")] = "USD",
 ) -> DealForecastResponse:
     return await deals_service.get_forecast(
         db,
@@ -80,6 +83,7 @@ async def get_forecast(
         date_from=date_from,
         date_to=date_to,
         owner_id=owner_id,
+        currency=currency,
     )
 
 

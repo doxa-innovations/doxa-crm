@@ -130,6 +130,9 @@ async def log_email_activity(
         )
     )
     contact = result.scalar_one_or_none()
+    from app.auth.permissions import SALES_REP, role_value
+    if contact is not None and role_value(current_user) == SALES_REP and contact.owner_id != current_user.id:
+        raise _not_found("Contact")
     if contact is None:
         raise _not_found("Contact")
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone, time, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -54,7 +55,7 @@ def process_campaign_step(self, enrollment_id: str, scheduled_step_index: int | 
 async def _process_campaign_step(enrollment_id: UUID, scheduled_step_index: int | None = None) -> dict[str, Any]:
     async with AsyncSessionLocal() as db:
         enrollment_result = await db.execute(
-            select(CampaignEnrollment).where(CampaignEnrollment.id == enrollment_id)
+            select(CampaignEnrollment).where(CampaignEnrollment.id == enrollment_id).with_for_update()
         )
         enrollment = enrollment_result.scalar_one_or_none()
         if enrollment is None:
@@ -79,10 +80,24 @@ async def _process_campaign_step(enrollment_id: UUID, scheduled_step_index: int 
         if campaign.status != CampaignStatus.active:
             return {"status": "skipped", "reason": campaign.status.value}
 
+        now = datetime.now(timezone.utc)
+        if campaign.start_date and now.date() < campaign.start_date:
+            start = datetime.combine(campaign.start_date, time.min, tzinfo=timezone.utc)
+            process_campaign_step.apply_async(args=[str(enrollment.id), enrollment.step_index], countdown=(start-now).total_seconds())
+            return {"status": "scheduled", "reason": "campaign_start_date"}
+        if campaign.end_date and now.date() > campaign.end_date:
+            enrollment.status = CampaignEnrollmentStatus.completed
+            await db.commit()
+            return {"status": "completed", "reason": "campaign_ended"}
+
         contact_result = await db.execute(select(Contact).where(Contact.id == enrollment.contact_id))
         contact = contact_result.scalar_one_or_none()
         if contact is None:
             return {"status": "missing_contact"}
+        if not getattr(contact, "is_active", True):
+            enrollment.status = CampaignEnrollmentStatus.completed
+            await db.commit()
+            return {"status": "completed", "reason": "contact_archived"}
 
         step_result = await db.execute(
             select(CampaignSequenceStep).where(
@@ -96,6 +111,35 @@ async def _process_campaign_step(enrollment_id: UUID, scheduled_step_index: int 
             await db.commit()
             return {"status": "completed", "reason": "no_step"}
 
+        # The first delay is relative to enrollment or the campaign start, whichever is later.
+        if enrollment.step_index == 0 and step.delay_days:
+            enrolled_at = enrollment.enrolled_at
+            if enrolled_at.tzinfo is None:
+                enrolled_at = enrolled_at.replace(tzinfo=timezone.utc)
+            start_at = datetime.combine(campaign.start_date, time.min, tzinfo=timezone.utc)
+            due_at = max(enrolled_at, start_at) + timedelta(days=step.delay_days)
+            if due_at > now:
+                process_campaign_step.apply_async(args=[str(enrollment.id), 0], countdown=(due_at-now).total_seconds())
+                return {"status": "scheduled", "reason": "first_step_delay"}
+
+        manual = _step_channel(step) not in {"email", "sms"}
+        if manual:
+            from app.models import Task, TaskStatus, TaskPriority, ActivityType
+            marker = f"Campaign {campaign.id} / enrollment {enrollment.id} / step {step.id}"
+            result = await db.execute(select(Task).where(Task.description == marker))
+            task = result.scalar_one_or_none()
+            if task is None:
+                task = Task(title=step.subject, description=marker, contact_id=contact.id, owner_id=contact.owner_id, type=ActivityType.call if _step_channel(step)=="call" else ActivityType.task, priority=TaskPriority.medium, status=TaskStatus.pending, due_at=now)
+                db.add(task)
+                await db.commit()
+            if task.status == TaskStatus.cancelled:
+                enrollment.status = CampaignEnrollmentStatus.completed
+                await db.commit()
+                return {"status": "completed", "reason": "manual_task_cancelled"}
+            if task.status != TaskStatus.completed:
+                process_campaign_step.apply_async(args=[str(enrollment.id), enrollment.step_index], countdown=300)
+                return {"status":"waiting", "reason":"manual_task", "task_id":str(task.id)}
+
         sent_metric_result = await db.execute(
             select(CampaignMetric).where(
                 CampaignMetric.campaign_id == enrollment.campaign_id,
@@ -105,8 +149,8 @@ async def _process_campaign_step(enrollment_id: UUID, scheduled_step_index: int 
             )
         )
         already_sent = sent_metric_result.scalar_one_or_none() is not None
-        delivery_result = CampaignDeliveryResult(delivered=False, reason="already_sent")
-        if not already_sent:
+        delivery_result = CampaignDeliveryResult(delivered=False, reason="manual_task_completed" if manual else "already_sent")
+        if not already_sent and not manual:
             delivery_result = await send_campaign_step_message(contact, step)
             if delivery_result.delivered:
                 db.add(
@@ -222,6 +266,15 @@ async def send_campaign_step_message(
     body = (step.body or step.subject).strip()
 
     if channel == CampaignSequenceChannel.email.value:
+        if getattr(contact, "email_opted_out_at", None) is not None:
+            return CampaignDeliveryResult(delivered=False, reason="email_opted_out")
+        from app.services.email_preferences import unsubscribe_token
+        import os
+        base = os.environ.get("PUBLIC_APP_URL", "").rstrip("/")
+        if not base:
+            raise RuntimeError("PUBLIC_APP_URL is required for campaign unsubscribe links")
+        link = f"{base}/unsubscribe?token={unsubscribe_token(contact.id)}"
+        body += f'<p><a href="{link}">Unsubscribe from campaign messages</a></p>'
         tags = build_campaign_email_tags(step.campaign_id, contact.id, step.id)
         await send_email_via_mailersend(contact.email, step.subject, body, tags)
         return CampaignDeliveryResult(delivered=True, reason="sent")
@@ -243,7 +296,7 @@ async def send_campaign_step_message(
         step.id,
         channel,
     )
-    return CampaignDeliveryResult(delivered=True, reason="manual_channel")
+    return CampaignDeliveryResult(delivered=False, reason="manual_task_required")
 
 
 def _step_channel(step: CampaignSequenceStep) -> str:

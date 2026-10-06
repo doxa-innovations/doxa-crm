@@ -5,7 +5,10 @@ import { useAuthStore } from "@/stores/auth-store";
 import type { ApiErrorPayload } from "@/types/api";
 
 type QueryPrimitive = string | number | boolean | null | undefined;
-export type QueryParams = Record<string, QueryPrimitive | readonly QueryPrimitive[]>;
+export type QueryParams = Record<
+  string,
+  QueryPrimitive | readonly QueryPrimitive[]
+>;
 
 interface ApiClientOptions extends Omit<RequestInit, "body" | "headers"> {
   body?: unknown;
@@ -40,7 +43,9 @@ function appendQueryParams(url: URL, params?: QueryParams): void {
   });
 }
 
-function isQueryPrimitiveArray(value: QueryPrimitive | readonly QueryPrimitive[]): value is readonly QueryPrimitive[] {
+function isQueryPrimitiveArray(
+  value: QueryPrimitive | readonly QueryPrimitive[],
+): value is readonly QueryPrimitive[] {
   return Array.isArray(value);
 }
 
@@ -53,14 +58,25 @@ function appendQueryValue(url: URL, key: string, value: QueryPrimitive): void {
 }
 
 function buildUrl(path: string, params?: QueryParams): string {
-  const url = new URL(`${normalizeBaseUrl(API_BASE_URL)}${normalizePath(path)}`, window.location.origin);
+  const url = new URL(
+    `${normalizeBaseUrl(API_BASE_URL)}${normalizePath(path)}`,
+    window.location.origin,
+  );
   appendQueryParams(url, params);
+  if (path.startsWith("/reports") && !url.searchParams.has("currency"))
+    url.searchParams.set(
+      "currency",
+      localStorage.getItem("doxa:report-currency") || "USD",
+    );
   return url.toString();
 }
 
 function base64UrlDecode(value: string): string {
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+  const padded = base64.padEnd(
+    base64.length + ((4 - (base64.length % 4)) % 4),
+    "=",
+  );
   return atob(padded);
 }
 
@@ -77,7 +93,9 @@ function tokenExpiresSoon(token: string): boolean {
       return true;
     }
 
-    return parsed.exp <= Math.floor(Date.now() / 1000) + TOKEN_REFRESH_GRACE_SECONDS;
+    return (
+      parsed.exp <= Math.floor(Date.now() / 1000) + TOKEN_REFRESH_GRACE_SECONDS
+    );
   } catch {
     return true;
   }
@@ -127,8 +145,23 @@ async function parseApiError(response: Response): Promise<ApiErrorPayload> {
   }
 
   return {
-    code: typeof payload.code === "string" ? payload.code : `HTTP_${response.status}`,
-    detail: stringifyDetail(payload.detail, fallbackDetail),
+    code:
+      typeof payload.code === "string"
+        ? payload.code
+        : `HTTP_${response.status}`,
+    detail: Array.isArray(payload.errors)
+      ? payload.errors
+          .map(
+            (e: {
+              field?: string;
+              message?: string;
+              msg?: string;
+              loc?: Array<string | number>;
+            }) =>
+              `${e.field ?? e.loc?.slice(1).join(".") ?? "Field"}: ${e.message ?? e.msg ?? "Invalid value"}`,
+          )
+          .join("; ")
+      : stringifyDetail(payload.detail, fallbackDetail),
     status: response.status,
   };
 }
@@ -156,7 +189,11 @@ async function buildHeaders(options: ApiClientOptions): Promise<Headers> {
   const isFormData = options.body instanceof FormData;
   const token = await resolveAuthToken(options.skipAuth);
 
-  if (!isFormData && options.body !== undefined && !headers.has("Content-Type")) {
+  if (
+    !isFormData &&
+    options.body !== undefined &&
+    !headers.has("Content-Type")
+  ) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -183,7 +220,10 @@ function requestBody(body: unknown): BodyInit | undefined {
   return JSON.stringify(body);
 }
 
-async function executeRequest<T>(path: string, options: ApiClientOptions): Promise<T> {
+async function executeRequest<T>(
+  path: string,
+  options: ApiClientOptions,
+): Promise<T> {
   const url = buildUrl(path, options.params);
   const response = await fetch(url, {
     ...options,
@@ -197,7 +237,11 @@ async function executeRequest<T>(path: string, options: ApiClientOptions): Promi
     const refreshedToken = await resolveAuthToken(options.skipAuth);
     if (refreshedToken) {
       const retryHeaders = new Headers(options.headers);
-      if (!(options.body instanceof FormData) && options.body !== undefined && !retryHeaders.has("Content-Type")) {
+      if (
+        !(options.body instanceof FormData) &&
+        options.body !== undefined &&
+        !retryHeaders.has("Content-Type")
+      ) {
         retryHeaders.set("Content-Type", "application/json");
       }
       if (!retryHeaders.has("Accept")) {
@@ -216,7 +260,8 @@ async function executeRequest<T>(path: string, options: ApiClientOptions): Promi
           return undefined as T;
         }
 
-        const retryContentType = retryResponse.headers.get("content-type") ?? "";
+        const retryContentType =
+          retryResponse.headers.get("content-type") ?? "";
         if (!retryContentType.includes("application/json")) {
           return (await retryResponse.text()) as T;
         }
@@ -244,11 +289,17 @@ async function executeRequest<T>(path: string, options: ApiClientOptions): Promi
   return (await response.json()) as T;
 }
 
-export async function apiClient<T>(path: string, options: ApiClientOptions = {}): Promise<T> {
+export async function apiClient<T>(
+  path: string,
+  options: ApiClientOptions = {},
+): Promise<T> {
   return executeRequest<T>(path, options);
 }
 
-export function apiErrorDetail(error: unknown, fallback = "Request failed"): string {
+export function apiErrorDetail(
+  error: unknown,
+  fallback = "Request failed",
+): string {
   if (typeof error === "object" && error !== null && "detail" in error) {
     const detail = (error as Partial<ApiErrorPayload>).detail;
     if (typeof detail === "string" && detail.trim()) {
@@ -264,10 +315,15 @@ export function apiErrorDetail(error: unknown, fallback = "Request failed"): str
 }
 
 export const api = {
-  delete: <T>(path: string, options: Omit<ApiClientOptions, "body" | "method"> = {}) =>
-    apiClient<T>(path, { ...options, method: "DELETE" }),
-  get: <T>(path: string, params?: QueryParams, options: Omit<ApiClientOptions, "body" | "method" | "params"> = {}) =>
-    apiClient<T>(path, { ...options, method: "GET", params }),
+  delete: <T>(
+    path: string,
+    options: Omit<ApiClientOptions, "body" | "method"> = {},
+  ) => apiClient<T>(path, { ...options, method: "DELETE" }),
+  get: <T>(
+    path: string,
+    params?: QueryParams,
+    options: Omit<ApiClientOptions, "body" | "method" | "params"> = {},
+  ) => apiClient<T>(path, { ...options, method: "GET", params }),
   patch: <T, TBody = unknown>(
     path: string,
     body: TBody,
@@ -283,6 +339,9 @@ export const api = {
     body: TBody,
     options: Omit<ApiClientOptions, "body" | "method"> = {},
   ) => apiClient<T>(path, { ...options, body, method: "PUT" }),
-  postForm: <T>(path: string, formData: FormData, options: Omit<ApiClientOptions, "body" | "method"> = {}) =>
-    apiClient<T>(path, { ...options, body: formData, method: "POST" }),
+  postForm: <T>(
+    path: string,
+    formData: FormData,
+    options: Omit<ApiClientOptions, "body" | "method"> = {},
+  ) => apiClient<T>(path, { ...options, body: formData, method: "POST" }),
 };

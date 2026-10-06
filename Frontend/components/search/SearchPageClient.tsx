@@ -1,6 +1,14 @@
 "use client";
 
-import { Building2, Kanban, Loader2, Search, UserPlus, Users, type LucideIcon } from "lucide-react";
+import {
+  Building2,
+  Kanban,
+  Loader2,
+  Search,
+  UserPlus,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -41,7 +49,14 @@ function resultUrl(result: SearchResult, groupKey: SearchGroupKey): string {
     return result.url;
   }
 
-  const basePath = groupKey === "contacts" ? "/contacts" : groupKey === "deals" ? "/deals" : groupKey === "accounts" ? "/accounts" : "/leads";
+  const basePath =
+    groupKey === "contacts"
+      ? "/contacts"
+      : groupKey === "deals"
+        ? "/deals"
+        : groupKey === "accounts"
+          ? "/accounts"
+          : "/leads";
   return `${basePath}/${result.id}`;
 }
 
@@ -64,12 +79,19 @@ export function SearchPageClient() {
     [searchQuery.data],
   );
   const showIntro = debouncedQuery.trim().length < 2;
-  const showEmpty = !showIntro && !searchQuery.isFetching && !searchQuery.isError && groupedResults.length === 0;
+  const showEmpty =
+    !showIntro &&
+    !searchQuery.isFetching &&
+    !searchQuery.isError &&
+    groupedResults.length === 0;
 
   return (
     <section className="rounded-xl bg-white p-4 shadow-sm sm:p-5">
-      <div className="flex min-h-12 items-center gap-3 rounded-lg border border-slate-200 px-3 focus-within:border-[#2563EB] focus-within:ring-2 focus-within:ring-[#2563EB]/15">
-        <Search className="h-5 w-5 text-[#64748B]" aria-hidden="true" />
+      <div className="flex min-h-12 items-center gap-3 rounded-lg border border-slate-200 px-3 focus-within:border-[var(--primary)] focus-within:ring-2 focus-within:ring-[var(--primary)]/15">
+        <Search
+          className="h-5 w-5 text-[var(--muted-foreground)]"
+          aria-hidden="true"
+        />
         <Input
           aria-label="Search CRM"
           autoFocus
@@ -78,22 +100,37 @@ export function SearchPageClient() {
           placeholder="Search contacts, deals, accounts, leads..."
           value={query}
         />
-        {searchQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin text-[#2563EB]" aria-hidden="true" /> : null}
+        {searchQuery.isFetching ? (
+          <Loader2
+            className="h-4 w-4 animate-spin text-[var(--primary)]"
+            aria-hidden="true"
+          />
+        ) : null}
       </div>
 
       {showIntro ? (
         <div className="mt-5">
-          <EmptyState description="Type at least 2 characters to search records." icon={Search} title="Search your CRM" />
+          <EmptyState
+            description="Type at least 2 characters to search records."
+            icon={Search}
+            title="Search your CRM"
+          />
         </div>
       ) : null}
 
       {searchQuery.isError ? (
-        <div className="mt-5 rounded-lg border border-red-100 bg-red-50 p-4 text-sm text-red-700">Could not run search. Please try again.</div>
+        <div className="mt-5 rounded-lg border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+          Could not run search. Please try again.
+        </div>
       ) : null}
 
       {showEmpty ? (
         <div className="mt-5">
-          <EmptyState description={`No results for "${debouncedQuery.trim()}".`} icon={Search} title="No matching records" />
+          <EmptyState
+            description={`No results for "${debouncedQuery.trim()}".`}
+            icon={Search}
+            title="No matching records"
+          />
         </div>
       ) : null}
 
@@ -111,23 +148,27 @@ export function SearchPageClient() {
 
           return (
             <section key={group.key}>
-              <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-[#64748B]">
+              <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-[var(--muted-foreground)]">
                 <Icon className="h-4 w-4" aria-hidden="true" />
                 {group.label} ({group.results.length})
               </div>
               <div className="overflow-hidden rounded-lg border border-slate-200">
                 {group.results.map((result) => (
                   <Link
-                    className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 hover:bg-[#EFF6FF]"
+                    className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 hover:bg-[var(--background)]"
                     href={resultUrl(result, group.key)}
                     key={`${group.key}-${result.id}`}
                   >
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#EFF6FF] text-[#2563EB]">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--background)] text-[var(--primary)]">
                       <Icon className="h-4 w-4" aria-hidden="true" />
                     </span>
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold text-[#0F2444]">{result.title}</span>
-                      <span className="mt-0.5 block truncate text-xs text-[#64748B]">{resultSubtitle(result)}</span>
+                      <span className="block truncate text-sm font-semibold text-[var(--navy)]">
+                        {result.title}
+                      </span>
+                      <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">
+                        {resultSubtitle(result)}
+                      </span>
                     </span>
                   </Link>
                 ))}

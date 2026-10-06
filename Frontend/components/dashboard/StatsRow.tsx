@@ -1,25 +1,41 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Activity, AlertTriangle, BadgeDollarSign, RefreshCcw, TrendingDown, TrendingUp, UserPlus } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  BadgeDollarSign,
+  RefreshCcw,
+  TrendingDown,
+  TrendingUp,
+  UserPlus,
+} from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatReportCurrency } from "@/lib/utils";
 import type { ApiErrorPayload, DashboardResponse } from "@/types/api";
 
 const DASHBOARD_REFETCH_INTERVAL = 300000;
 
 function getErrorMessage(error: unknown): string {
   const apiError = error as Partial<ApiErrorPayload>;
-  return typeof apiError.detail === "string" ? apiError.detail : "Could not load dashboard stats.";
+  return typeof apiError.detail === "string"
+    ? apiError.detail
+    : "Could not load dashboard stats.";
 }
 
 function StatsRowSkeleton() {
   return (
-    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Loading dashboard stats">
+    <section
+      className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+      aria-label="Loading dashboard stats"
+    >
       {["open-deals", "leads", "overdue", "activities"].map((item) => (
-        <div className="rounded-lg border border-slate-200/70 bg-white p-5 shadow-sm" key={item}>
+        <div
+          className="rounded-lg border border-slate-200/70 bg-white p-5 shadow-sm"
+          key={item}
+        >
           <div className="flex items-start justify-between">
             <div className="space-y-3">
               <Skeleton className="h-4 w-28" />
@@ -55,7 +71,10 @@ export function StatsRow() {
             onClick={() => void refetch()}
             type="button"
           >
-            <RefreshCcw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} aria-hidden="true" />
+            <RefreshCcw
+              className={cn("h-3.5 w-3.5", isFetching && "animate-spin")}
+              aria-hidden="true"
+            />
             Retry
           </button>
         </div>
@@ -67,7 +86,9 @@ export function StatsRow() {
   const hasMoreLeads = leadsDelta > 0;
   const hasFewerLeads = leadsDelta < 0;
   const leadTrendText =
-    leadsDelta === 0 ? "Same as last month" : `${Math.abs(leadsDelta)} ${hasMoreLeads ? "more" : "fewer"} than last month`;
+    leadsDelta === 0
+      ? "Same as last month"
+      : `${Math.abs(leadsDelta)} ${hasMoreLeads ? "more" : "fewer"} than last month`;
   const LeadTrendIcon = hasFewerLeads ? TrendingDown : TrendingUp;
 
   const stats = [
@@ -75,9 +96,9 @@ export function StatsRow() {
       accent: "border-emerald-100 bg-emerald-50 text-emerald-700",
       icon: BadgeDollarSign,
       label: "Open Deals",
-      trend: formatCurrency(data.open_deals_value),
+      trend: formatReportCurrency(data.open_deals_value),
       value: data.open_deals_count.toLocaleString(),
-      valueClassName: "text-[#0F2444]",
+      valueClassName: "text-[var(--navy)]",
     },
     {
       accent: "border-sky-100 bg-sky-50 text-sky-700",
@@ -85,9 +106,13 @@ export function StatsRow() {
       label: "Leads This Month",
       trend: leadTrendText,
       trendIcon: LeadTrendIcon,
-      trendTone: hasFewerLeads ? "text-red-600" : hasMoreLeads ? "text-emerald-700" : "text-slate-500",
+      trendTone: hasFewerLeads
+        ? "text-red-600"
+        : hasMoreLeads
+          ? "text-emerald-700"
+          : "text-slate-500",
       value: data.leads_this_month.toLocaleString(),
-      valueClassName: "text-[#0F2444]",
+      valueClassName: "text-[var(--navy)]",
     },
     {
       accent:
@@ -98,7 +123,8 @@ export function StatsRow() {
       label: "Overdue Tasks",
       trend: data.overdue_tasks_count > 0 ? "Needs attention" : "All clear",
       value: data.overdue_tasks_count.toLocaleString(),
-      valueClassName: data.overdue_tasks_count > 0 ? "text-red-600" : "text-[#0F2444]",
+      valueClassName:
+        data.overdue_tasks_count > 0 ? "text-red-600" : "text-[var(--navy)]",
     },
     {
       accent: "border-violet-100 bg-violet-50 text-violet-700",
@@ -106,29 +132,56 @@ export function StatsRow() {
       label: "Activities This Week",
       trend: "Logged CRM touchpoints",
       value: data.activities_this_week.toLocaleString(),
-      valueClassName: "text-[#0F2444]",
+      valueClassName: "text-[var(--navy)]",
     },
   ];
 
   return (
-    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Dashboard stats">
+    <section
+      className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+      aria-label="Dashboard stats"
+    >
       {stats.map((stat) => {
         const Icon = stat.icon;
         const TrendIcon = stat.trendIcon;
 
         return (
-          <article className="min-h-[150px] rounded-lg border border-slate-200/70 bg-white p-5 shadow-sm transition-colors hover:border-slate-300/80" key={stat.label}>
+          <article
+            className="min-h-[150px] rounded-lg border border-slate-200/70 bg-white p-5 shadow-sm transition-colors hover:border-slate-300/80"
+            key={stat.label}
+          >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#64748B]">{stat.label}</p>
-                <p className={cn("mt-2 text-3xl font-semibold tracking-normal", stat.valueClassName)}>{stat.value}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
+                  {stat.label}
+                </p>
+                <p
+                  className={cn(
+                    "mt-2 text-3xl font-semibold tracking-normal",
+                    stat.valueClassName,
+                  )}
+                >
+                  {stat.value}
+                </p>
               </div>
-              <div className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-lg border", stat.accent)}>
+              <div
+                className={cn(
+                  "grid h-10 w-10 shrink-0 place-items-center rounded-lg border",
+                  stat.accent,
+                )}
+              >
                 <Icon className="h-5 w-5" aria-hidden="true" />
               </div>
             </div>
-            <div className={cn("mt-5 flex items-center gap-1.5 border-t border-slate-100 pt-3 text-xs font-medium", stat.trendTone ?? "text-[#64748B]")}>
-              {TrendIcon ? <TrendIcon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+            <div
+              className={cn(
+                "mt-5 flex items-center gap-1.5 border-t border-slate-100 pt-3 text-xs font-medium",
+                stat.trendTone ?? "text-[var(--muted-foreground)]",
+              )}
+            >
+              {TrendIcon ? (
+                <TrendIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              ) : null}
               <span>{stat.trend}</span>
             </div>
           </article>

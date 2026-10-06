@@ -112,7 +112,10 @@ def lead_search_document(lead: LeadResponse) -> dict[str, Any]:
 
 
 async def global_search(q: str, current_user: User, *, limit: int = 20) -> GlobalSearchResponse:
+    from fastapi import HTTPException
     client = get_search_client()
+    if not client.enabled:
+        raise HTTPException(status_code=503, detail="Global search is not configured. Use record lists or contact your administrator.")
     limit = min(max(limit, 1), 50)
     filters = _search_filters(current_user)
 

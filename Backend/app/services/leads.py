@@ -4,7 +4,7 @@ import csv
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from io import StringIO
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from pydantic import ValidationError
@@ -41,7 +41,7 @@ from app.schemas.leads import (
 )
 from app.services.duplicate_detection import detect_duplicate_pairs, find_duplicates_for_payload
 from app.services.lead_assignment import assign_lead as resolve_assignment
-from app.services.lead_scoring import calculate_lead_score, recalculate_lead_score
+from app.services.lead_scoring import base_lead_score, calculate_lead_score, recalculate_lead_score
 from app.services import search as search_service
 
 ALLOWED_IMPORT_COLUMNS = {"full_name", "email", "phone", "company", "source"}
@@ -170,10 +170,15 @@ async def list_leads(
     max_score: int | None = None,
     assigned_to: UUID | None = None,
     exclude_converted: bool = False,
+    search: str | None = None,
 ) -> list[LeadResponse]:
     offset, limit = _pagination(page, page_size)
-    query = select(Lead).where(Lead.is_active.is_(True))
+    query = select(Lead, User.full_name).outerjoin(User, User.id == Lead.assigned_to).where(Lead.is_active.is_(True))
 
+    if search:
+        from sqlalchemy import or_
+        pattern = f"%{search.strip()}%"
+        query = query.where(or_(Lead.full_name.ilike(pattern), Lead.email.ilike(pattern), Lead.company.ilike(pattern)))
     if status_filter:
         query = query.where(Lead.status == status_filter)
     elif exclude_converted:
@@ -189,8 +194,8 @@ async def list_leads(
     if assigned_to:
         query = query.where(Lead.assigned_to == assigned_to)
 
-    result = await db.execute(query.order_by(Lead.created_at.desc()).offset(offset).limit(limit))
-    return [await build_lead_response(db, lead) for lead in result.scalars().all()]
+    result = await db.execute(query.order_by(Lead.created_at.desc(), Lead.id).offset(offset).limit(limit))
+    return [LeadResponse.model_validate(lead).model_copy(update={"assigned_to_name": name}) for lead, name in result.all()]
 
 
 async def get_lead_model(db: AsyncSession, lead_id: UUID) -> Lead:
@@ -307,8 +312,9 @@ async def list_duplicate_leads(
     *,
     page: int = 1,
     page_size: int = 20,
+    assigned_to: UUID | None = None,
 ) -> list[DuplicateLeadPair]:
-    return await detect_duplicate_pairs(db, page=page, page_size=page_size)
+    return await detect_duplicate_pairs(db, page=page, page_size=page_size, assigned_to=assigned_to)
 
 
 async def import_leads_from_csv(
@@ -342,6 +348,9 @@ async def import_leads_from_csv(
             ],
         )
 
+    existing = await db.execute(select(Lead).where(Lead.is_active.is_(True)))
+    from app.services.duplicate_detection import DuplicateIndex
+    duplicate_index = DuplicateIndex(existing.scalars().all())
     for row_number, row in enumerate(reader, start=2):
         payload = {key: (row.get(key) or "").strip() for key in ALLOWED_IMPORT_COLUMNS}
 
@@ -352,16 +361,17 @@ async def import_leads_from_csv(
             errors.append(LeadImportError(row=row_number, reason=str(exc.errors()[0]["msg"])))
             continue
 
-        duplicates = await find_duplicates_for_payload(db, payload)
+        duplicates = await find_duplicates_for_payload(db, payload, candidates=duplicate_index.candidates(payload))
         if duplicates:
             skipped += 1
             errors.append(LeadImportError(row=row_number, reason="Potential duplicate lead"))
             continue
 
-        lead = Lead(**lead_in.model_dump())
-        lead.score = await calculate_lead_score(db, lead)
+        lead = Lead(id=uuid4(), **lead_in.model_dump())
+        # Imported leads have no activity history; avoid per-row aggregate queries.
+        lead.score = max(0, min(base_lead_score(lead) - 10, 100))
         db.add(lead)
-        await db.flush()
+        duplicate_index.add(lead)
         imported_leads.append(lead)
         imported += 1
 
@@ -426,7 +436,12 @@ async def convert_lead(
     deal: Deal | None = None
 
     try:
-        if convert_in.create_account:
+        if convert_in.account_id:
+            result = await db.execute(select(Account).where(Account.id == convert_in.account_id, Account.is_active.is_(True)))
+            account = result.scalar_one_or_none()
+            if account is None:
+                raise HTTPException(status_code=404, detail="Account not found")
+        elif convert_in.create_account:
             account = Account(
                 name=convert_in.account_name or lead.company,
                 industry="Unknown",
@@ -498,11 +513,11 @@ async def convert_lead(
             deal = Deal(
                 title=convert_in.deal_title,
                 value=convert_in.deal_value,
-                currency="USD",
+                currency=convert_in.currency,
                 pipeline_id=convert_in.pipeline_id,
                 stage_id=stage.id,
                 probability=stage.probability,
-                expected_close=date.today() + timedelta(days=30),
+                expected_close=convert_in.expected_close or date.today() + timedelta(days=30),
                 contact_id=contact.id,
                 account_id=account.id,
                 owner_id=lead.assigned_to,
@@ -548,6 +563,9 @@ async def merge_leads(
     primary = await get_lead_model(db, merge_in.primary_lead_id)
     duplicate = await get_lead_model(db, merge_in.duplicate_lead_id)
 
+    if primary.status == LeadStatus.converted and duplicate.status == LeadStatus.converted:
+        raise HTTPException(409, "Both leads are converted. Review their contacts and accounts before merging.")
+
     primary.score = max(primary.score, duplicate.score)
     if not primary.phone and duplicate.phone:
         primary.phone = duplicate.phone
@@ -557,6 +575,16 @@ async def merge_leads(
         primary.status = LeadStatus.converted
         primary.converted_at = duplicate.converted_at or datetime.now(timezone.utc)
 
+    # Move the complete operational history in the same transaction.
+    from app.models import Activity, Task
+    for model in (Activity, Task):
+        result = await db.execute(select(model).where(model.lead_id == duplicate.id))
+        for related in result.scalars().all():
+            related.lead_id = primary.id
+    for model in (Contact, Account):
+        result = await db.execute(select(model).where(model.custom_fields[CONVERTED_FROM_LEAD_FIELD].astext == str(duplicate.id)))
+        for related in result.scalars().all():
+            related.custom_fields = {**related.custom_fields, CONVERTED_FROM_LEAD_FIELD: str(primary.id)}
     duplicate.is_active = False
     await db.commit()
     await db.refresh(primary)

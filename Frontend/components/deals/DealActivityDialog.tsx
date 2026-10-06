@@ -6,7 +6,13 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
@@ -30,10 +36,18 @@ interface DealActivityDialogProps {
 }
 
 function fieldError(message?: string) {
-  return message ? <p className="mt-1 text-xs text-red-600">{message}</p> : null;
+  return message ? (
+    <p className="mt-1 text-xs text-red-600">{message}</p>
+  ) : null;
 }
 
-export function DealActivityDialog({ accountId, contactId, dealId, onOpenChange, open }: DealActivityDialogProps) {
+export function DealActivityDialog({
+  accountId,
+  contactId,
+  dealId,
+  onOpenChange,
+  open,
+}: DealActivityDialogProps) {
   const queryClient = useQueryClient();
   const form = useForm<ActivityFormValues>({
     defaultValues: {
@@ -57,7 +71,9 @@ export function DealActivityDialog({ accountId, contactId, dealId, onOpenChange,
       }),
     onSuccess: () => {
       form.reset();
-      void queryClient.invalidateQueries({ queryKey: ["deals", "detail", dealId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["deals", "detail", dealId],
+      });
       onOpenChange(false);
     },
   });
@@ -67,9 +83,16 @@ export function DealActivityDialog({ accountId, contactId, dealId, onOpenChange,
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Log Activity</DialogTitle>
-          <DialogDescription>Add a call, email, meeting, or note to this deal.</DialogDescription>
+          <DialogDescription>
+            Add a call, email, meeting, or note to this deal.
+          </DialogDescription>
         </DialogHeader>
-        <form className="grid gap-4" onSubmit={form.handleSubmit((values) => createActivity.mutate(values))}>
+        <form
+          className="grid gap-4"
+          onSubmit={form.handleSubmit((values) =>
+            createActivity.mutate(values),
+          )}
+        >
           <div>
             <Label htmlFor="deal_activity_type">Type</Label>
             <select
@@ -101,12 +124,24 @@ export function DealActivityDialog({ accountId, contactId, dealId, onOpenChange,
             <Label htmlFor="deal_activity_outcome">Outcome</Label>
             <Input id="deal_activity_outcome" {...form.register("outcome")} />
           </div>
-          {createActivity.isError ? <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">Could not log activity.</div> : null}
+          {createActivity.isError ? (
+            <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+              Could not log activity.
+            </div>
+          ) : null}
           <div className="flex justify-end gap-3">
-            <Button onClick={() => onOpenChange(false)} type="button" variant="outline">
+            <Button
+              onClick={() => onOpenChange(false)}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
-            <Button className="bg-[#2563EB] hover:bg-blue-700" disabled={createActivity.isPending} type="submit">
+            <Button
+              className="bg-[var(--primary)] hover:bg-blue-700"
+              disabled={createActivity.isPending}
+              type="submit"
+            >
               Save Activity
             </Button>
           </div>

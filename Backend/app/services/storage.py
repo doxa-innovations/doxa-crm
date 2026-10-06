@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from app.config import get_settings
+from fastapi import HTTPException
 
 PRESIGNED_URL_EXPIRY_SECONDS = 3600
 
@@ -64,7 +65,7 @@ async def upload_project_document(
         )
         return storage_key, generate_presigned_download_url(storage_key)
 
-    return storage_key, f"https://storage.local/{storage_key}"
+    raise HTTPException(status_code=503, detail="Document storage is not configured. Ask an administrator to configure storage and retry.")
 
 
 def generate_presigned_download_url(storage_key: str) -> str:
@@ -76,4 +77,4 @@ def generate_presigned_download_url(storage_key: str) -> str:
             ExpiresIn=PRESIGNED_URL_EXPIRY_SECONDS,
         )
 
-    return f"https://storage.local/{storage_key}"
+    raise HTTPException(status_code=503, detail="Document storage is unavailable. Please try again after storage is configured.")

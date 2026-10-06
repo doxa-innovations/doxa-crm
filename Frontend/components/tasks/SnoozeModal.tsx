@@ -1,10 +1,17 @@
 "use client";
+import { toLocalDateTime } from "@/lib/utils";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
@@ -19,7 +26,7 @@ interface SnoozeModalProps {
 function defaultSnoozeValue(): string {
   const date = new Date();
   date.setDate(date.getDate() + 1);
-  return date.toISOString().slice(0, 16);
+  return toLocalDateTime(date);
 }
 
 export function SnoozeModal({ onOpenChange, open, task }: SnoozeModalProps) {
@@ -42,7 +49,9 @@ export function SnoozeModal({ onOpenChange, open, task }: SnoozeModalProps) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Snooze until...</DialogTitle>
-          <DialogDescription>Move the due date for {task?.title ?? "this task"}.</DialogDescription>
+          <DialogDescription>
+            Move the due date for {task?.title ?? "this task"}.
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           <div>
@@ -55,12 +64,24 @@ export function SnoozeModal({ onOpenChange, open, task }: SnoozeModalProps) {
               value={newDue}
             />
           </div>
-          {snoozeTask.isError ? <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">Could not snooze task.</div> : null}
+          {snoozeTask.isError ? (
+            <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+              Could not snooze task.
+            </div>
+          ) : null}
           <div className="flex justify-end gap-3">
-            <Button onClick={() => onOpenChange(false)} type="button" variant="outline">
+            <Button
+              onClick={() => onOpenChange(false)}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
-            <Button disabled={!task || snoozeTask.isPending || !newDue} onClick={() => snoozeTask.mutate()} type="button">
+            <Button
+              disabled={!task || snoozeTask.isPending || !newDue}
+              onClick={() => snoozeTask.mutate()}
+              type="button"
+            >
               Snooze
             </Button>
           </div>

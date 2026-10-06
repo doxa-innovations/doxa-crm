@@ -155,6 +155,9 @@ async def test_create_activity_route_requires_link_and_logs_activity(app, monkey
     owner = make_user()
     app.dependency_overrides[get_current_user] = lambda: owner
     activity_response = make_activity_response(owner_id=owner.id)
+    async def checked_links(db, user, payload):
+        assert payload.contact_id is not None
+    monkeypatch.setattr(activities_router_module, "validate_linked_access", checked_links)
 
     async def fake_create_activity(db, activity_in, current_user):
         assert activity_in.contact_id is not None
@@ -322,6 +325,7 @@ async def test_email_logging_matches_contact_and_creates_activity():
     contact = SimpleNamespace(
         id=uuid4(),
         email="ada@example.com",
+        owner_id=owner.id,
         account_id=uuid4(),
         is_active=True,
     )

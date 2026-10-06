@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
+import * as NavigationDialog from "@radix-ui/react-dialog";
 import { usePathname, useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -76,7 +77,13 @@ const navGroups: NavGroup[] = [
   {
     items: [
       {
-        hiddenFor: ["customer_success", "marketing_manager", "marketing_rep", "read_only", "sales_rep"],
+        hiddenFor: [
+          "customer_success",
+          "marketing_manager",
+          "marketing_rep",
+          "read_only",
+          "sales_rep",
+        ],
         href: "/settings",
         icon: Settings,
         label: "Settings",
@@ -87,12 +94,22 @@ const navGroups: NavGroup[] = [
   },
 ];
 
-function getDisplayName(sessionName: unknown, storedName: string | undefined): string {
-  return typeof sessionName === "string" && sessionName.trim() ? sessionName : storedName || "Doxa User";
+function getDisplayName(
+  sessionName: unknown,
+  storedName: string | undefined,
+): string {
+  return typeof sessionName === "string" && sessionName.trim()
+    ? sessionName
+    : storedName || "Your account";
 }
 
-function getEmail(sessionEmail: unknown, storedEmail: string | undefined): string {
-  return typeof sessionEmail === "string" && sessionEmail.trim() ? sessionEmail : storedEmail || "user@doxa.local";
+function getEmail(
+  sessionEmail: unknown,
+  storedEmail: string | undefined,
+): string {
+  return typeof sessionEmail === "string" && sessionEmail.trim()
+    ? sessionEmail
+    : storedEmail || "";
 }
 
 function getRoleLabel(role: CrmRole): string {
@@ -109,7 +126,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const session = authClient.useSession();
   const sessionUser = session.data?.user;
   const role = normalizeRole(sessionUser?.role ?? storedUser?.role);
-  const name = getDisplayName(sessionUser?.full_name ?? sessionUser?.name, storedUser?.full_name);
+  const name = getDisplayName(
+    sessionUser?.full_name ?? sessionUser?.name,
+    storedUser?.full_name,
+  );
   const email = getEmail(sessionUser?.email, storedUser?.email);
 
   const handleLogout = async () => {
@@ -119,9 +139,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   };
 
   const sidebar = (
-    <aside className="flex h-full w-[240px] flex-col bg-[#0F2444] text-white">
+    <aside className="flex h-full w-[240px] flex-col bg-[var(--navy)] text-white">
       <div className="flex h-16 items-center justify-between px-5">
-        <Link className="text-lg font-bold text-white" href="/dashboard" onClick={onClose}>
+        <Link
+          className="text-lg font-bold text-white"
+          href="/dashboard"
+          onClick={onClose}
+        >
           Doxa CRM
         </Link>
         <button
@@ -136,7 +160,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       <nav className="flex-1 overflow-y-auto px-3 py-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {navGroups.map((group) => {
-          const visibleItems = group.items.filter((item) => !item.hiddenFor?.includes(role));
+          const visibleItems = group.items.filter(
+            (item) => !item.hiddenFor?.includes(role),
+          );
 
           if (visibleItems.length === 0) {
             return null;
@@ -144,22 +170,30 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
           return (
             <div className="mb-5" key={group.label}>
-              <div className="px-3 pb-2 text-[11px] font-semibold uppercase text-white/45">{group.label}</div>
+              <div className="px-3 pb-2 text-[11px] font-semibold uppercase text-white/70">
+                {group.label}
+              </div>
               <div className="grid gap-1">
                 {visibleItems.map((item) => {
-                  const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                  const isActive =
+                    pathname === item.href ||
+                    pathname.startsWith(`${item.href}/`);
 
                   return (
                     <Link
                       className={cn(
                         "flex h-10 items-center gap-3 border-l-2 border-transparent px-3 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white/90",
-                        isActive && "border-l-[#2563EB] bg-[#2563EB]/10 text-[#2563EB]",
+                        isActive && "border-l-teal-300 bg-white/10 text-white",
                       )}
                       href={item.href}
+                      aria-current={isActive ? "page" : undefined}
                       key={item.href}
                       onClick={onClose}
                     >
-                      <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      <item.icon
+                        className="h-4 w-4 shrink-0"
+                        aria-hidden="true"
+                      />
                       <span className="truncate">{item.label}</span>
                     </Link>
                   );
@@ -172,13 +206,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       <div className="border-t border-white/10 p-4">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-sm font-semibold text-[#0F2444]">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-sm font-semibold text-[var(--navy)]">
             {getInitials(name)}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold text-white">{name}</div>
-            <div className="truncate text-xs text-white/55">{email}</div>
-            <div className="mt-0.5 truncate text-xs text-white/70">{getRoleLabel(role)}</div>
+            <div className="truncate text-sm font-semibold text-white">
+              {name}
+            </div>
+            <div className="truncate text-xs text-white/70">{email}</div>
+            <div className="mt-0.5 truncate text-xs text-white/70">
+              {getRoleLabel(role)}
+            </div>
           </div>
         </div>
         <Button
@@ -197,16 +235,28 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   return (
     <>
-      <div className="fixed inset-y-0 left-0 z-40 hidden md:block">{sidebar}</div>
-      <div className={cn("fixed inset-0 z-50 md:hidden", isOpen ? "block" : "hidden")}>
-        <button
-          aria-label="Close navigation overlay"
-          className="absolute inset-0 bg-slate-950/55"
-          type="button"
-          onClick={onClose}
-        />
-        <div className="absolute inset-y-0 left-0">{sidebar}</div>
+      <div className="fixed inset-y-0 left-0 z-40 hidden md:block">
+        {sidebar}
       </div>
+      <NavigationDialog.Root
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open) onClose();
+        }}
+      >
+        <NavigationDialog.Portal>
+          <NavigationDialog.Overlay className="fixed inset-0 z-50 bg-slate-950/55 md:hidden" />
+          <NavigationDialog.Content
+            className="fixed inset-y-0 left-0 z-50 md:hidden"
+            aria-describedby={undefined}
+          >
+            <NavigationDialog.Title className="sr-only">
+              Navigation
+            </NavigationDialog.Title>
+            {sidebar}
+          </NavigationDialog.Content>
+        </NavigationDialog.Portal>
+      </NavigationDialog.Root>
     </>
   );
 }

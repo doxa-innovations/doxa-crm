@@ -1,4 +1,9 @@
 "use client";
+import {
+  useRecordOptions,
+  RecordOptionsStatus,
+} from "@/hooks/useRecordOptions";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,12 +15,40 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { api } from "@/lib/api";
-import type { Campaign, Lead, LeadCreate, LeadSource, LeadStatus, LeadUpdate, User } from "@/types/api";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { api, apiErrorDetail } from "@/lib/api";
+import type {
+  Campaign,
+  Lead,
+  LeadCreate,
+  LeadSource,
+  LeadStatus,
+  LeadUpdate,
+  User,
+} from "@/types/api";
 
-const leadSources: LeadSource[] = ["website", "referral", "social", "cold_outreach", "event", "campaign"];
-const leadStatuses: LeadStatus[] = ["new", "contacted", "qualified", "disqualified"];
+const leadSources: LeadSource[] = [
+  "website",
+  "referral",
+  "social",
+  "cold_outreach",
+  "event",
+  "campaign",
+];
+const leadStatuses: LeadStatus[] = [
+  "new",
+  "contacted",
+  "qualified",
+  "disqualified",
+];
 const allLeadStatuses: LeadStatus[] = [...leadStatuses, "converted"];
 
 const leadFormSchema = z.object({
@@ -68,11 +101,22 @@ function valuesFromLead(lead?: Lead | null): LeadFormValues {
   };
 }
 
-function fieldError(message?: string) {
-  return message ? <p className="mt-1 text-xs text-red-600">{message}</p> : null;
+function fieldError(message?: string, field?: string) {
+  return message ? (
+    <p
+      id={field ? `${field}-error` : undefined}
+      role="alert"
+      className="mt-1 text-xs text-red-600"
+    >
+      {message}
+    </p>
+  ) : null;
 }
 
-function buildPayload(values: LeadFormValues, lead?: Lead | null): LeadCreate | LeadUpdate {
+function buildPayload(
+  values: LeadFormValues,
+  lead?: Lead | null,
+): LeadCreate | LeadUpdate {
   return {
     assigned_to: values.assigned_to || null,
     campaign_id: values.campaign_id || null,
@@ -99,6 +143,10 @@ export function LeadForm({ lead, onOpenChange, onSaved, open }: LeadFormProps) {
     defaultValues: valuesFromLead(lead),
     resolver: zodResolver(leadFormSchema),
   });
+  const confirmDiscard = useUnsavedChanges(open && form.formState.isDirty);
+  const handleOpenChange = (next: boolean) => {
+    if (next || confirmDiscard()) onOpenChange(next);
+  };
 
   useEffect(() => {
     if (open) {
@@ -107,15 +155,14 @@ export function LeadForm({ lead, onOpenChange, onSaved, open }: LeadFormProps) {
   }, [form, lead, open]);
 
   const usersQuery = useQuery({
-    queryFn: () => api.get<User[]>("/users/"),
+    queryFn: () => api.get<User[]>("/users/directory"),
     queryKey: ["users", "lead-owner-select"],
     retry: false,
   });
-  const campaignsQuery = useQuery({
-    queryFn: () => api.get<Campaign[]>("/campaigns/", { page_size: 100 }),
-    queryKey: ["campaigns", "lead-select"],
-    retry: false,
-  });
+  const campaignsQuery = useRecordOptions<Campaign>("/campaigns/", {}, [
+    "campaigns",
+    "form-options",
+  ]);
 
   const saveLead = useMutation({
     mutationFn: async (values: LeadFormValues) => {
@@ -128,6 +175,7 @@ export function LeadForm({ lead, onOpenChange, onSaved, open }: LeadFormProps) {
       return api.get<Lead>(`/leads/${savedLead.id}`);
     },
     onSuccess: (savedLead) => {
+      form.reset(form.getValues());
       void queryClient.invalidateQueries({ queryKey: ["leads"] });
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       onSaved?.(savedLead);
@@ -138,38 +186,83 @@ export function LeadForm({ lead, onOpenChange, onSaved, open }: LeadFormProps) {
   const submitting = saveLead.isPending;
 
   return (
-    <Sheet onOpenChange={onOpenChange} open={open}>
+    <Sheet onOpenChange={handleOpenChange} open={open}>
       <SheetContent>
         <SheetHeader>
           <SheetTitle>{lead ? "Edit Lead" : "New Lead"}</SheetTitle>
-          <SheetDescription>{lead ? "Update lead details and refresh its score." : "Create a lead and calculate its score."}</SheetDescription>
+          <SheetDescription>
+            {lead
+              ? "Update lead details and refresh its score."
+              : "Create a lead and calculate its score."}
+          </SheetDescription>
         </SheetHeader>
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={form.handleSubmit((values) => saveLead.mutate(values))}>
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={form.handleSubmit((values) => saveLead.mutate(values))}
+        >
           <SheetBody className="space-y-5">
             <div>
               <Label htmlFor="full_name">Full Name</Label>
-              <Input id="full_name" disabled={submitting} {...form.register("full_name")} />
-              {fieldError(form.formState.errors.full_name?.message)}
+              <Input
+                id="full_name"
+                disabled={submitting}
+                aria-invalid={Boolean(form.formState.errors.full_name)}
+                aria-describedby={
+                  form.formState.errors.full_name
+                    ? "full_name-error"
+                    : undefined
+                }
+                {...form.register("full_name")}
+              />
+              {fieldError(
+                form.formState.errors.full_name?.message,
+                "full_name",
+              )}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="lead_email">Email</Label>
-                <Input id="lead_email" disabled={submitting} type="email" {...form.register("email")} />
-                {fieldError(form.formState.errors.email?.message)}
+                <Input
+                  id="lead_email"
+                  disabled={submitting}
+                  type="email"
+                  aria-invalid={Boolean(form.formState.errors.email)}
+                  aria-describedby={
+                    form.formState.errors.email ? "email-error" : undefined
+                  }
+                  {...form.register("email")}
+                />
+                {fieldError(form.formState.errors.email?.message, "email")}
               </div>
               <div>
                 <Label htmlFor="lead_phone">Phone</Label>
-                <Input id="lead_phone" disabled={submitting} {...form.register("phone")} />
-                {fieldError(form.formState.errors.phone?.message)}
+                <Input
+                  id="lead_phone"
+                  disabled={submitting}
+                  aria-invalid={Boolean(form.formState.errors.phone)}
+                  aria-describedby={
+                    form.formState.errors.phone ? "phone-error" : undefined
+                  }
+                  {...form.register("phone")}
+                />
+                {fieldError(form.formState.errors.phone?.message, "phone")}
               </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="lead_company">Company</Label>
-                <Input id="lead_company" disabled={submitting} {...form.register("company")} />
-                {fieldError(form.formState.errors.company?.message)}
+                <Input
+                  id="lead_company"
+                  disabled={submitting}
+                  aria-invalid={Boolean(form.formState.errors.company)}
+                  aria-describedby={
+                    form.formState.errors.company ? "company-error" : undefined
+                  }
+                  {...form.register("company")}
+                />
+                {fieldError(form.formState.errors.company?.message, "company")}
               </div>
               <div>
                 <Label htmlFor="lead_source">Source</Label>
@@ -177,6 +270,10 @@ export function LeadForm({ lead, onOpenChange, onSaved, open }: LeadFormProps) {
                   className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
                   disabled={submitting}
                   id="lead_source"
+                  aria-invalid={Boolean(form.formState.errors.source)}
+                  aria-describedby={
+                    form.formState.errors.source ? "source-error" : undefined
+                  }
                   {...form.register("source")}
                 >
                   {leadSources.map((source) => (
@@ -194,13 +291,19 @@ export function LeadForm({ lead, onOpenChange, onSaved, open }: LeadFormProps) {
                 className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950 disabled:bg-slate-50 disabled:text-slate-500"
                 disabled={submitting || isConvertedLead}
                 id="lead_status"
+                aria-invalid={Boolean(form.formState.errors.status)}
+                aria-describedby={
+                  form.formState.errors.status ? "status-error" : undefined
+                }
                 {...form.register("status")}
               >
-                {(isConvertedLead ? allLeadStatuses : leadStatuses).map((status) => (
-                  <option key={status} value={status}>
-                    {sourceLabel(status)}
-                  </option>
-                ))}
+                {(isConvertedLead ? allLeadStatuses : leadStatuses).map(
+                  (status) => (
+                    <option key={status} value={status}>
+                      {sourceLabel(status)}
+                    </option>
+                  ),
+                )}
               </select>
             </div>
 
@@ -211,6 +314,12 @@ export function LeadForm({ lead, onOpenChange, onSaved, open }: LeadFormProps) {
                   className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
                   disabled={submitting}
                   id="lead_assigned_to"
+                  aria-invalid={Boolean(form.formState.errors.assigned_to)}
+                  aria-describedby={
+                    form.formState.errors.assigned_to
+                      ? "assigned_to-error"
+                      : undefined
+                  }
                   {...form.register("assigned_to")}
                 >
                   <option value="">Current user</option>
@@ -229,6 +338,12 @@ export function LeadForm({ lead, onOpenChange, onSaved, open }: LeadFormProps) {
                   className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
                   disabled={submitting}
                   id="lead_campaign"
+                  aria-invalid={Boolean(form.formState.errors.campaign_id)}
+                  aria-describedby={
+                    form.formState.errors.campaign_id
+                      ? "campaign_id-error"
+                      : undefined
+                  }
                   {...form.register("campaign_id")}
                 >
                   <option value="">No campaign</option>
@@ -242,16 +357,34 @@ export function LeadForm({ lead, onOpenChange, onSaved, open }: LeadFormProps) {
             </div>
 
             {isConvertedLead ? (
-              <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">Converted leads cannot move back to an earlier status.</div>
+              <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Converted leads cannot move back to an earlier status.
+              </div>
             ) : null}
 
-            {saveLead.isError ? <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">Could not save lead.</div> : null}
+            {saveLead.isError ? (
+              <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+                {apiErrorDetail(saveLead.error, "Could not save lead.")}
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <RecordOptionsStatus query={campaignsQuery} label="campaigns" />
+            </div>
           </SheetBody>
           <SheetFooter>
-            <Button disabled={submitting} onClick={() => onOpenChange(false)} type="button" variant="outline">
+            <Button
+              disabled={submitting}
+              onClick={() => handleOpenChange(false)}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
-            <Button className="bg-[#2563EB] hover:bg-blue-700" disabled={submitting} type="submit">
+            <Button
+              className="bg-[var(--primary)] hover:bg-blue-700"
+              disabled={submitting}
+              type="submit"
+            >
               <Save className="h-4 w-4" aria-hidden="true" />
               Save Lead
             </Button>

@@ -51,22 +51,28 @@ def _account_not_found() -> HTTPException:
     )
 
 
-async def build_account_response(db: AsyncSession, account: Account) -> AccountResponse:
-    owner_result = await db.execute(select(User.full_name).where(User.id == account.owner_id))
-    owner_name = owner_result.scalar_one_or_none()
+async def build_account_response(db: AsyncSession, account: Account, current_user: User | None = None, *, prefetched: tuple | None = None) -> AccountResponse:
+    if prefetched is not None:
+        owner_name, linked_contact_count, values_by_currency = prefetched
+        total_deal_value = values_by_currency.get("USD", Decimal("0"))
+    else:
+        owner_result = await db.execute(select(User.full_name).where(User.id == account.owner_id))
+        owner_name = owner_result.scalar_one_or_none()
 
-    contact_count_result = await db.execute(
-        select(func.count(Contact.id)).where(
-            Contact.account_id == account.id,
-            Contact.is_active.is_(True),
+        contact_count_result = await db.execute(
+            select(func.count(Contact.id)).where(
+                Contact.account_id == account.id,
+                Contact.is_active.is_(True),
+            )
         )
-    )
-    linked_contact_count = int(contact_count_result.scalar_one() or 0)
+        linked_contact_count = int(contact_count_result.scalar_one() or 0)
 
-    deal_value_result = await db.execute(
-        select(func.coalesce(func.sum(Deal.value), 0)).where(Deal.account_id == account.id)
-    )
-    total_deal_value = deal_value_result.scalar_one() or Decimal("0")
+        values_query = select(Deal.currency, func.sum(Deal.value)).where(Deal.account_id == account.id, Deal.is_active.is_(True)).group_by(Deal.currency)
+        if current_user is not None and _is_sales_rep(current_user):
+            values_query = values_query.where(Deal.owner_id == current_user.id)
+        deal_value_result = await db.execute(values_query)
+        values_by_currency = {currency: value for currency, value in deal_value_result.all()}
+        total_deal_value = values_by_currency.get("USD", Decimal("0"))
 
     return AccountResponse(
         id=account.id,
@@ -82,6 +88,7 @@ async def build_account_response(db: AsyncSession, account: Account) -> AccountR
         is_active=account.is_active,
         linked_contact_count=linked_contact_count,
         total_deal_value=total_deal_value,
+        deal_values_by_currency=values_by_currency,
         created_at=account.created_at,
         updated_at=account.updated_at,
     )
@@ -113,10 +120,22 @@ async def list_accounts(
     if search and search.strip():
         query = query.where(Account.name.ilike(f"%{search.strip()}%"))
 
-    query = query.order_by(Account.created_at.desc()).offset(offset).limit(limit)
+    query = query.order_by(Account.created_at.desc(), Account.id).offset(offset).limit(limit)
     result = await db.execute(query)
 
-    return [await build_account_response(db, account) for account in result.scalars().all()]
+    accounts = result.scalars().all()
+    if not accounts:
+        return []
+    ids = [account.id for account in accounts]
+    owners = dict((await db.execute(select(User.id, User.full_name).where(User.id.in_([account.owner_id for account in accounts])))).all())
+    counts = dict((await db.execute(select(Contact.account_id, func.count(Contact.id)).where(Contact.account_id.in_(ids), Contact.is_active.is_(True), contact_visibility_filter(current_user)).group_by(Contact.account_id))).all())
+    values_query = select(Deal.account_id, Deal.currency, func.sum(Deal.value)).where(Deal.account_id.in_(ids), Deal.is_active.is_(True)).group_by(Deal.account_id, Deal.currency)
+    if _is_sales_rep(current_user):
+        values_query = values_query.where(Deal.owner_id == current_user.id)
+    values = {}
+    for account_id, currency, amount in (await db.execute(values_query)).all():
+        values.setdefault(account_id, {})[currency] = amount
+    return [await build_account_response(db, account, current_user, prefetched=(owners.get(account.owner_id), counts.get(account.id, 0), values.get(account.id, {}))) for account in accounts]
 
 
 async def get_account_model(
@@ -145,7 +164,7 @@ async def get_account(
     current_user: User,
 ) -> AccountResponse:
     account = await get_account_model(db, account_id, current_user)
-    return await build_account_response(db, account)
+    return await build_account_response(db, account, current_user)
 
 
 async def create_account(
@@ -175,7 +194,7 @@ async def create_account(
         ) from exc
 
     await db.refresh(account)
-    response = await build_account_response(db, account)
+    response = await build_account_response(db, account, current_user)
     await search_service.sync_account_to_search(response)
     return response
 
@@ -210,7 +229,7 @@ async def update_account(
         ) from exc
 
     await db.refresh(account)
-    response = await build_account_response(db, account)
+    response = await build_account_response(db, account, current_user)
     await search_service.sync_account_to_search(response)
     return response
 

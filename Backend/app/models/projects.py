@@ -46,6 +46,8 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+    portal_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    portal_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     portal_token: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean,
@@ -98,6 +100,7 @@ class ProjectDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     file_url: Mapped[str] = mapped_column(String(1000), nullable=False)
     content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    customer_visible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     filename: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
     file_size: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
     mime_type: Mapped[str | None] = mapped_column(String(255), nullable=True)

@@ -2,11 +2,20 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { differenceInCalendarDays } from "date-fns";
-import { AlertTriangle, Bell, BriefcaseBusiness, Loader2, Menu, RefreshCcw, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  Bell,
+  BriefcaseBusiness,
+  Loader2,
+  Menu,
+  RefreshCcw,
+  Search,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { usePreference } from "@/hooks/usePreference";
 import { SearchModal } from "@/components/search/SearchModal";
 import { api } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
@@ -37,7 +46,9 @@ function roleLabel(role: string): string {
 
 function apiErrorMessage(error: unknown): string {
   const apiError = error as Partial<ApiErrorPayload>;
-  return typeof apiError.detail === "string" ? apiError.detail : "Could not load notifications.";
+  return typeof apiError.detail === "string"
+    ? apiError.detail
+    : "Could not load notifications.";
 }
 
 function linkedEntityLabel(task: Task): string {
@@ -65,11 +76,17 @@ function daysOverdue(task: Task): number {
     return 0;
   }
 
-  return Math.max(0, differenceInCalendarDays(new Date(), new Date(task.due_at)));
+  return Math.max(
+    0,
+    differenceInCalendarDays(new Date(), new Date(task.due_at)),
+  );
 }
 
 function daysQuiet(deal: Deal): number {
-  return Math.max(14, differenceInCalendarDays(new Date(), new Date(deal.updated_at)));
+  return Math.max(
+    14,
+    differenceInCalendarDays(new Date(), new Date(deal.updated_at)),
+  );
 }
 
 function decimalToNumber(value: number | string): number {
@@ -78,6 +95,11 @@ function decimalToNumber(value: number | string): number {
 
 export function Topbar({ onMenuClick }: TopbarProps) {
   const pathname = usePathname();
+  const notificationPreferences = usePreference<{
+    tasks: boolean;
+    deals: boolean;
+  }>("notification-settings", { tasks: true, deals: true });
+  const dismissed = usePreference<string[]>("dismissed-alerts", []);
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isMac, setIsMac] = useState(false);
@@ -87,15 +109,17 @@ export function Topbar({ onMenuClick }: TopbarProps) {
   const sessionUser = session.data?.user;
   const pageTitle = useMemo(() => titleFromPath(pathname), [pathname]);
   const name =
-    (typeof sessionUser?.full_name === "string" && sessionUser.full_name.trim()) ||
+    (typeof sessionUser?.full_name === "string" &&
+      sessionUser.full_name.trim()) ||
     (typeof sessionUser?.name === "string" && sessionUser.name.trim()) ||
     storedUser?.full_name ||
-    "Amina Reed";
+    "Your account";
   const role = normalizeRole(sessionUser?.role ?? storedUser?.role);
   const displayRole = roleLabel(role);
   const shortcutLabel = isMac ? "⌘ K" : "Ctrl K";
 
-  const hasAuthenticatedUser = Boolean(accessToken || sessionUser) && !session.isPending;
+  const hasAuthenticatedUser =
+    Boolean(accessToken || sessionUser) && !session.isPending;
 
   const overdueTasksQuery = useQuery({
     enabled: hasAuthenticatedUser,
@@ -109,11 +133,21 @@ export function Topbar({ onMenuClick }: TopbarProps) {
     queryKey: ["deals", "stale", "topbar"],
     refetchInterval: 300000,
   });
-  const overdueTasks = overdueTasksQuery.data ?? [];
-  const staleDeals = staleDealsQuery.data ?? [];
+  const overdueTasks = (
+    notificationPreferences.value.tasks ? (overdueTasksQuery.data ?? []) : []
+  ).filter(
+    (task) => !dismissed.value.includes(`task:${task.id}:${task.due_at}`),
+  );
+  const staleDeals = (
+    notificationPreferences.value.deals ? (staleDealsQuery.data ?? []) : []
+  ).filter(
+    (deal) => !dismissed.value.includes(`deal:${deal.id}:${deal.updated_at}`),
+  );
   const notificationCount = overdueTasks.length + staleDeals.length;
-  const isLoadingNotifications = overdueTasksQuery.isLoading || staleDealsQuery.isLoading;
-  const isFetchingNotifications = overdueTasksQuery.isFetching || staleDealsQuery.isFetching;
+  const isLoadingNotifications =
+    overdueTasksQuery.isLoading || staleDealsQuery.isLoading;
+  const isFetchingNotifications =
+    overdueTasksQuery.isFetching || staleDealsQuery.isFetching;
   const notificationsError =
     overdueTasksQuery.isError || staleDealsQuery.isError
       ? apiErrorMessage(overdueTasksQuery.error ?? staleDealsQuery.error)
@@ -146,7 +180,8 @@ export function Topbar({ onMenuClick }: TopbarProps) {
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
-      const isSearchShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
+      const isSearchShortcut =
+        (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
       if (!isSearchShortcut) {
         return;
       }
@@ -161,7 +196,10 @@ export function Topbar({ onMenuClick }: TopbarProps) {
 
   return (
     <header className="sticky top-0 z-30 h-16 border-b border-slate-100 bg-white/95 px-4 backdrop-blur md:px-6">
-      <nav className="flex h-full items-center justify-between gap-4" aria-label="Primary">
+      <nav
+        className="flex h-full items-center justify-between gap-4"
+        aria-label="Primary"
+      >
         <div className="flex min-w-0 items-center gap-3">
           <button
             aria-label="Open navigation"
@@ -171,7 +209,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
           >
             <Menu className="h-5 w-5" aria-hidden="true" />
           </button>
-          <ol className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-[#64748B] sm:text-sm">
+          <ol className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)] sm:text-sm">
             <li className="shrink-0">Doxa CRM</li>
             <li className="text-slate-300" aria-hidden="true">
               /
@@ -184,12 +222,14 @@ export function Topbar({ onMenuClick }: TopbarProps) {
 
         <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-3">
           <button
-            className="group hidden h-10 min-w-0 items-center gap-2 rounded-full border border-slate-200/80 bg-slate-50/80 px-3 text-left text-sm text-[#64748B] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-slate-300 hover:bg-white md:inline-flex md:w-64 lg:w-80"
+            className="group hidden h-10 min-w-0 items-center gap-2 rounded-full border border-slate-200/80 bg-slate-50/80 px-3 text-left text-sm text-[var(--muted-foreground)] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-colors hover:border-slate-300 hover:bg-white md:inline-flex md:w-64 lg:w-80"
             onClick={() => setSearchOpen(true)}
-            onFocus={() => setSearchOpen(true)}
             type="button"
           >
-            <Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+            <Search
+              className="h-4 w-4 shrink-0 text-slate-400"
+              aria-hidden="true"
+            />
             <span className="min-w-0 flex-1 truncate">Search</span>
             <kbd className="inline-flex h-6 shrink-0 items-center rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold leading-none text-slate-500 shadow-sm">
               {shortcutLabel}
@@ -233,8 +273,39 @@ export function Topbar({ onMenuClick }: TopbarProps) {
               >
                 <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
                   <div>
-                    <p className="text-sm font-semibold text-[#0F2444]">Notifications</p>
-                    <p className="mt-0.5 text-xs text-[#64748B]">
+                    <p className="text-sm font-semibold text-[var(--navy)]">
+                      Notifications
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      Recent overdue tasks and quiet deals. Open the lists for
+                      all records.
+                    </p>
+                    <button
+                      className="mt-2 text-xs text-blue-700 underline"
+                      disabled={dismissed.isPending}
+                      onClick={() =>
+                        dismissed.save(
+                          [
+                            ...dismissed.value,
+                            ...overdueTasks.map(
+                              (t) => `task:${t.id}:${t.due_at}`,
+                            ),
+                            ...staleDeals.map(
+                              (d) => `deal:${d.id}:${d.updated_at}`,
+                            ),
+                          ].slice(-1000),
+                        )
+                      }
+                    >
+                      Mark these as read
+                    </button>
+                    <button
+                      className="ml-3 text-xs text-blue-700 underline"
+                      onClick={() => dismissed.save([])}
+                    >
+                      Show all
+                    </button>
+                    <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
                       {notificationCount > 0
                         ? `${notificationCount} item${notificationCount === 1 ? "" : "s"} need attention`
                         : "No urgent CRM alerts"}
@@ -250,15 +321,24 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                     title="Refresh notifications"
                     type="button"
                   >
-                    <RefreshCcw className={cn("h-4 w-4", isFetchingNotifications && "animate-spin")} aria-hidden="true" />
+                    <RefreshCcw
+                      className={cn(
+                        "h-4 w-4",
+                        isFetchingNotifications && "animate-spin",
+                      )}
+                      aria-hidden="true"
+                    />
                     <span className="sr-only">Refresh notifications</span>
                   </button>
                 </div>
 
                 <div className="max-h-[min(28rem,calc(100vh-7rem))] overflow-y-auto p-2">
                   {isLoadingNotifications ? (
-                    <div className="flex items-center gap-2 px-3 py-6 text-sm text-[#64748B]">
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    <div className="flex items-center gap-2 px-3 py-6 text-sm text-[var(--muted-foreground)]">
+                      <Loader2
+                        className="h-4 w-4 animate-spin"
+                        aria-hidden="true"
+                      />
                       Loading notifications...
                     </div>
                   ) : notificationsError ? (
@@ -266,7 +346,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                       {notificationsError}
                     </div>
                   ) : notificationCount === 0 ? (
-                    <div className="px-3 py-6 text-center text-sm text-[#64748B]">
+                    <div className="px-3 py-6 text-center text-sm text-[var(--muted-foreground)]">
                       Everything looks clear right now.
                     </div>
                   ) : (
@@ -285,11 +365,18 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                                 onClick={() => setNotificationsOpen(false)}
                               >
                                 <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-red-50 text-red-600 ring-1 ring-red-100">
-                                  <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+                                  <AlertTriangle
+                                    className="h-4 w-4"
+                                    aria-hidden="true"
+                                  />
                                 </span>
                                 <span className="min-w-0 flex-1">
-                                  <span className="block truncate text-sm font-semibold text-[#0F2444]">{task.title}</span>
-                                  <span className="mt-0.5 block truncate text-xs text-[#64748B]">{linkedEntityLabel(task)}</span>
+                                  <span className="block truncate text-sm font-semibold text-[var(--navy)]">
+                                    {task.title}
+                                  </span>
+                                  <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">
+                                    {linkedEntityLabel(task)}
+                                  </span>
                                   <span className="mt-1 block text-xs font-medium text-red-700">
                                     {daysOverdue(task)}d overdue
                                   </span>
@@ -314,12 +401,21 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                                 onClick={() => setNotificationsOpen(false)}
                               >
                                 <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-100">
-                                  <BriefcaseBusiness className="h-4 w-4" aria-hidden="true" />
+                                  <BriefcaseBusiness
+                                    className="h-4 w-4"
+                                    aria-hidden="true"
+                                  />
                                 </span>
                                 <span className="min-w-0 flex-1">
-                                  <span className="block truncate text-sm font-semibold text-[#0F2444]">{deal.title}</span>
-                                  <span className="mt-0.5 block truncate text-xs text-[#64748B]">
-                                    {deal.account_name ?? "No account"} / {formatCurrency(decimalToNumber(deal.value), deal.currency)}
+                                  <span className="block truncate text-sm font-semibold text-[var(--navy)]">
+                                    {deal.title}
+                                  </span>
+                                  <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">
+                                    {deal.account_name ?? "No account"} /{" "}
+                                    {formatCurrency(
+                                      decimalToNumber(deal.value),
+                                      deal.currency,
+                                    )}
                                   </span>
                                   <span className="mt-1 block text-xs font-medium text-amber-700">
                                     {daysQuiet(deal)} days without activity
@@ -336,14 +432,14 @@ export function Topbar({ onMenuClick }: TopbarProps) {
 
                 <div className="grid grid-cols-2 border-t border-slate-100 text-sm font-semibold">
                   <Link
-                    className="px-4 py-3 text-center text-[#2563EB] transition-colors hover:bg-slate-50"
+                    className="px-4 py-3 text-center text-[var(--primary)] transition-colors hover:bg-slate-50"
                     href="/tasks"
                     onClick={() => setNotificationsOpen(false)}
                   >
                     View tasks
                   </Link>
                   <Link
-                    className="border-l border-slate-100 px-4 py-3 text-center text-[#2563EB] transition-colors hover:bg-slate-50"
+                    className="border-l border-slate-100 px-4 py-3 text-center text-[var(--primary)] transition-colors hover:bg-slate-50"
                     href="/deals"
                     onClick={() => setNotificationsOpen(false)}
                   >
@@ -354,19 +450,23 @@ export function Topbar({ onMenuClick }: TopbarProps) {
             ) : null}
           </div>
 
-          <button
+          <Link
+            href="/profile"
             className="flex h-11 items-center gap-3 rounded-full px-1.5 pl-3 text-left transition-colors hover:bg-slate-100"
             title={`${name} - ${displayRole}`}
-            type="button"
           >
             <span className="hidden min-w-0 text-right sm:block">
-              <span className="block max-w-36 truncate text-sm font-medium leading-5 text-slate-950">{name}</span>
-              <span className="block max-w-36 truncate text-xs leading-4 text-slate-500/80">{displayRole}</span>
+              <span className="block max-w-36 truncate text-sm font-medium leading-5 text-slate-950">
+                {name}
+              </span>
+              <span className="block max-w-36 truncate text-xs leading-4 text-slate-500/80">
+                {displayRole}
+              </span>
             </span>
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/70 bg-gradient-to-br from-blue-50 via-indigo-50 to-emerald-50 text-xs font-semibold text-[#0F2444] shadow-sm ring-1 ring-slate-200/70">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/70 bg-gradient-to-br from-blue-50 via-indigo-50 to-emerald-50 text-xs font-semibold text-[var(--navy)] shadow-sm ring-1 ring-slate-200/70">
               {getInitials(name)}
             </span>
-          </button>
+          </Link>
         </div>
       </nav>
       <SearchModal onOpenChange={setSearchOpen} open={searchOpen} />

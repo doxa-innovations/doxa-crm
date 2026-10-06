@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 
-export type StatusPillType = "lead" | "deal" | "task" | "health" | "campaign" | "role";
+export type StatusPillType =
+  "lead" | "deal" | "task" | "health" | "campaign" | "role";
 
 interface StatusPillProps {
   status: string;
@@ -10,14 +11,14 @@ interface StatusPillProps {
 
 const statusStyles: Record<StatusPillType, Record<string, string>> = {
   campaign: {
-    active: "bg-blue-50 text-[#2563EB] ring-blue-100",
+    active: "bg-blue-50 text-[var(--primary)] ring-blue-100",
     completed: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-    draft: "bg-slate-100 text-[#64748B] ring-slate-200",
+    draft: "bg-slate-100 text-[var(--muted-foreground)] ring-slate-200",
     paused: "bg-amber-50 text-amber-700 ring-amber-100",
   },
   deal: {
     lost: "bg-red-50 text-red-700 ring-red-100",
-    open: "bg-blue-50 text-[#2563EB] ring-blue-100",
+    open: "bg-blue-50 text-[var(--primary)] ring-blue-100",
     won: "bg-emerald-50 text-emerald-700 ring-emerald-100",
   },
   health: {
@@ -29,23 +30,23 @@ const statusStyles: Record<StatusPillType, Record<string, string>> = {
     customer_success: "bg-emerald-50 text-emerald-700 ring-emerald-100",
     marketing_manager: "bg-amber-50 text-amber-700 ring-amber-100",
     marketing_rep: "bg-amber-50 text-amber-700 ring-amber-100",
-    read_only: "bg-slate-100 text-[#64748B] ring-slate-200",
-    sales_manager: "bg-blue-50 text-[#2563EB] ring-blue-100",
-    sales_rep: "bg-blue-50 text-[#2563EB] ring-blue-100",
-    super_admin: "bg-[#0F2444]/10 text-[#0F2444] ring-[#0F2444]/10",
+    read_only: "bg-slate-100 text-[var(--muted-foreground)] ring-slate-200",
+    sales_manager: "bg-blue-50 text-[var(--primary)] ring-blue-100",
+    sales_rep: "bg-blue-50 text-[var(--primary)] ring-blue-100",
+    super_admin: "bg-[var(--navy)]/10 text-[var(--navy)] ring-[var(--navy)]/10",
   },
   lead: {
-    contacted: "bg-blue-50 text-[#2563EB] ring-blue-100",
-    converted: "bg-[#0F2444]/10 text-[#0F2444] ring-[#0F2444]/10",
+    contacted: "bg-blue-50 text-[var(--primary)] ring-blue-100",
+    converted: "bg-[var(--navy)]/10 text-[var(--navy)] ring-[var(--navy)]/10",
     disqualified: "bg-red-50 text-red-700 ring-red-100",
-    new: "bg-slate-100 text-[#64748B] ring-slate-200",
+    new: "bg-slate-100 text-[var(--muted-foreground)] ring-slate-200",
     qualified: "bg-emerald-50 text-emerald-700 ring-emerald-100",
   },
   task: {
     completed: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-    in_progress: "bg-blue-50 text-[#2563EB] ring-blue-100",
+    in_progress: "bg-blue-50 text-[var(--primary)] ring-blue-100",
     overdue: "bg-red-50 text-red-700 ring-red-100",
-    pending: "bg-slate-100 text-[#64748B] ring-slate-200",
+    pending: "bg-slate-100 text-[var(--muted-foreground)] ring-slate-200",
   },
 };
 
@@ -59,7 +60,9 @@ function formatStatusLabel(status: string): string {
 
 export function StatusPill({ className, status, type }: StatusPillProps) {
   const normalizedStatus = status.toLowerCase();
-  const tone = statusStyles[type][normalizedStatus] ?? "bg-slate-100 text-[#64748B] ring-slate-200";
+  const tone =
+    statusStyles[type][normalizedStatus] ??
+    "bg-slate-100 text-[var(--muted-foreground)] ring-slate-200";
 
   return (
     <span

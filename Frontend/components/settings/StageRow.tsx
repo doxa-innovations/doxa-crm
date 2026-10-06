@@ -18,10 +18,17 @@ interface StageRowProps {
   stage: PipelineStage;
 }
 
-export function StageRow({ canEdit = true, dragHandleProps, pipelineId, stage }: StageRowProps) {
+export function StageRow({
+  canEdit = true,
+  dragHandleProps,
+  pipelineId,
+  stage,
+}: StageRowProps) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(stage.name);
-  const [probability, setProbability] = useState(String(Math.round(stage.probability)));
+  const [probability, setProbability] = useState(
+    String(Math.round(stage.probability)),
+  );
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   useEffect(() => {
@@ -30,18 +37,26 @@ export function StageRow({ canEdit = true, dragHandleProps, pipelineId, stage }:
   }, [stage.name, stage.probability]);
 
   const usageQuery = useQuery({
-    queryFn: () => api.get<Deal[]>("/deals/", { page_size: 1, stage_id: stage.id }),
+    queryFn: () =>
+      api.get<Deal[]>("/deals/", { page_size: 1, stage_id: stage.id }),
     queryKey: ["deals", "stage-usage", stage.id],
   });
 
   const updateStage = useMutation({
-    mutationFn: (payload: PipelineStageUpdate) => api.patch<PipelineStage, PipelineStageUpdate>(`/pipelines/${pipelineId}/stages/${stage.id}`, payload),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["pipelines"] }),
+    mutationFn: (payload: PipelineStageUpdate) =>
+      api.patch<PipelineStage, PipelineStageUpdate>(
+        `/pipelines/${pipelineId}/stages/${stage.id}`,
+        payload,
+      ),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: ["pipelines"] }),
   });
 
   const deleteStage = useMutation({
-    mutationFn: () => api.delete<void>(`/pipelines/${pipelineId}/stages/${stage.id}`),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["pipelines"] }),
+    mutationFn: () =>
+      api.delete<void>(`/pipelines/${pipelineId}/stages/${stage.id}`),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: ["pipelines"] }),
   });
 
   function saveIfChanged() {
@@ -50,7 +65,12 @@ export function StageRow({ canEdit = true, dragHandleProps, pipelineId, stage }:
     }
 
     const nextProbability = Number(probability);
-    if (!name.trim() || Number.isNaN(nextProbability) || nextProbability < 0 || nextProbability > 100) {
+    if (
+      !name.trim() ||
+      Number.isNaN(nextProbability) ||
+      nextProbability < 0 ||
+      nextProbability > 100
+    ) {
       setName(stage.name);
       setProbability(String(Math.round(stage.probability)));
       return;
@@ -60,7 +80,10 @@ export function StageRow({ canEdit = true, dragHandleProps, pipelineId, stage }:
     if (name.trim() !== stage.name) {
       payload.name = name.trim();
     }
-    if (Math.round(nextProbability * 100) / 100 !== Math.round(stage.probability * 100) / 100) {
+    if (
+      Math.round(nextProbability * 100) / 100 !==
+      Math.round(stage.probability * 100) / 100
+    ) {
       payload.probability = nextProbability;
     }
 
@@ -70,7 +93,8 @@ export function StageRow({ canEdit = true, dragHandleProps, pipelineId, stage }:
   }
 
   const hasDeals = (usageQuery.data ?? []).length > 0;
-  const deleteDisabled = usageQuery.isLoading || hasDeals || deleteStage.isPending;
+  const deleteDisabled =
+    usageQuery.isLoading || hasDeals || deleteStage.isPending;
 
   return (
     <>
@@ -78,7 +102,7 @@ export function StageRow({ canEdit = true, dragHandleProps, pipelineId, stage }:
         <div className="flex items-center justify-between gap-3 sm:contents">
           <button
             aria-label="Drag stage"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#64748B] hover:bg-slate-100"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-slate-100"
             disabled={!canEdit}
             type="button"
             {...dragHandleProps}
@@ -90,7 +114,13 @@ export function StageRow({ canEdit = true, dragHandleProps, pipelineId, stage }:
             disabled={!canEdit || deleteDisabled}
             onClick={() => setConfirmDeleteOpen(true)}
             size="icon"
-            title={hasDeals ? "Stage contains deals and cannot be deleted." : usageQuery.isLoading ? "Checking stage usage..." : "Delete stage"}
+            title={
+              hasDeals
+                ? "Stage contains deals and cannot be deleted."
+                : usageQuery.isLoading
+                  ? "Checking stage usage..."
+                  : "Delete stage"
+            }
             type="button"
             variant="ghost"
           >
@@ -111,7 +141,9 @@ export function StageRow({ canEdit = true, dragHandleProps, pipelineId, stage }:
         />
         <div className="relative">
           <span className="sr-only">Probability percentage</span>
-          <span className="mb-1 block text-xs font-medium text-[#64748B] sm:hidden">Probability</span>
+          <span className="mb-1 block text-xs font-medium text-[var(--muted-foreground)] sm:hidden">
+            Probability
+          </span>
           <div className="relative">
             <Input
               aria-label="Probability percentage"
@@ -123,7 +155,9 @@ export function StageRow({ canEdit = true, dragHandleProps, pipelineId, stage }:
               type="number"
               value={probability}
             />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#64748B]">%</span>
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--muted-foreground)]">
+              %
+            </span>
           </div>
         </div>
         <Button
@@ -131,7 +165,13 @@ export function StageRow({ canEdit = true, dragHandleProps, pipelineId, stage }:
           disabled={!canEdit || deleteDisabled}
           onClick={() => setConfirmDeleteOpen(true)}
           size="icon"
-          title={hasDeals ? "Stage contains deals and cannot be deleted." : usageQuery.isLoading ? "Checking stage usage..." : "Delete stage"}
+          title={
+            hasDeals
+              ? "Stage contains deals and cannot be deleted."
+              : usageQuery.isLoading
+                ? "Checking stage usage..."
+                : "Delete stage"
+          }
           type="button"
           variant="ghost"
         >
@@ -140,7 +180,11 @@ export function StageRow({ canEdit = true, dragHandleProps, pipelineId, stage }:
       </div>
       <ConfirmDialog
         isPending={deleteStage.isPending}
-        onConfirm={() => deleteStage.mutate(undefined, { onSuccess: () => setConfirmDeleteOpen(false) })}
+        onConfirm={() =>
+          deleteStage.mutate(undefined, {
+            onSuccess: () => setConfirmDeleteOpen(false),
+          })
+        }
         onOpenChange={setConfirmDeleteOpen}
         open={confirmDeleteOpen}
         title="Delete stage"

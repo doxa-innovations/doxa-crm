@@ -38,8 +38,10 @@ export interface UserUpdate {
   is_active?: boolean;
 }
 
-export type LeadStatus = "new" | "contacted" | "qualified" | "disqualified" | "converted";
-export type LeadSource = "website" | "referral" | "social" | "cold_outreach" | "event" | "campaign";
+export type LeadStatus =
+  "new" | "contacted" | "qualified" | "disqualified" | "converted";
+export type LeadSource =
+  "website" | "referral" | "social" | "cold_outreach" | "event" | "campaign";
 
 export interface Lead {
   id: UUID;
@@ -100,6 +102,9 @@ export interface LeadAssignRequest {
 }
 
 export interface LeadConvertRequest {
+  account_id?: string | null;
+  currency?: string;
+  expected_close?: string | null;
   create_account: boolean;
   account_name?: string | null;
   create_deal?: boolean;
@@ -145,6 +150,7 @@ export type AccountTier = "enterprise" | "smb" | "startup";
 export type ContactSortBy = "created_at" | "last_name" | "company";
 
 export interface Contact {
+  email_opted_out_at?: string | null;
   id: UUID;
   first_name: string;
   last_name: string;
@@ -221,6 +227,7 @@ export interface Account {
   linked_contact_count?: number;
   contact_count?: number;
   total_deal_value?: DecimalValue;
+  deal_values_by_currency?: Record<string, DecimalValue>;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
@@ -473,7 +480,8 @@ export interface DealForecastResponse {
 }
 
 export type ActivityType = "call" | "email" | "meeting" | "note" | "task";
-export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled" | "overdue";
+export type TaskStatus =
+  "pending" | "in_progress" | "completed" | "cancelled" | "overdue";
 export type StoredTaskStatus = Exclude<TaskStatus, "overdue">;
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 
@@ -579,8 +587,10 @@ export interface TaskSnoozeRequest {
 export type CampaignType = "email" | "sms" | "event" | "social" | "cold_call";
 export type CampaignStatus = "draft" | "active" | "paused" | "completed";
 export type CampaignEnrollmentStatus = "active" | "completed" | "unsubscribed";
-export type CampaignSequenceChannel = "email" | "sms" | "call" | "task" | "social";
-export type CampaignMetricEventType = "sent" | "opened" | "clicked" | "replied" | "converted";
+export type CampaignSequenceChannel =
+  "email" | "sms" | "call" | "task" | "social";
+export type CampaignMetricEventType =
+  "sent" | "opened" | "clicked" | "replied" | "converted";
 
 export interface CampaignMetrics {
   sent: number;
@@ -697,6 +707,8 @@ export interface CampaignMetricCreate {
 export type ProjectHealth = "green" | "yellow" | "red";
 
 export interface Project {
+  portal_enabled: boolean;
+  portal_expires_at: string | null;
   id: UUID;
   name: string;
   account_id: UUID;
@@ -728,6 +740,8 @@ export interface ProjectCreate {
 }
 
 export interface ProjectUpdate {
+  portal_enabled?: boolean;
+  portal_expires_at?: string | null;
   name?: string;
   status?: string;
   start_date?: ISODate;
@@ -759,6 +773,7 @@ export interface MilestoneUpdate {
 }
 
 export interface ProjectDocument {
+  customer_visible: boolean;
   id: UUID;
   project_id: UUID;
   filename: string;
@@ -906,7 +921,8 @@ export interface DashboardWidget {
 export type DashboardResponse = DashboardWidget;
 
 export type CustomReportEntity = "deals" | "leads" | "contacts" | "activities";
-export type CustomReportOperator = "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "contains" | "in";
+export type CustomReportOperator =
+  "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "contains" | "in";
 
 export interface CustomReportFilter {
   field: string;

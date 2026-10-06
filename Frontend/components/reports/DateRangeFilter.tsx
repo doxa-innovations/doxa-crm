@@ -22,9 +22,11 @@ interface DateRangeFilterProps {
   onApply: (value: DateRangeFilterValue) => void;
 }
 
-const dateInputClassName = "[color-scheme:light] [&::-webkit-calendar-picker-indicator]:h-5 [&::-webkit-calendar-picker-indicator]:w-5 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-100";
-const labelClassName = "text-xs font-medium text-[#64748B]";
-const selectClassName = "h-10 rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950 shadow-sm";
+const dateInputClassName =
+  "[color-scheme:light] [&::-webkit-calendar-picker-indicator]:h-5 [&::-webkit-calendar-picker-indicator]:w-5 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-100";
+const labelClassName = "text-xs font-medium text-[var(--muted-foreground)]";
+const selectClassName =
+  "h-10 rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950 shadow-sm";
 
 export function defaultDateRange(): DateRangeFilterValue {
   const dateTo = new Date();
@@ -38,11 +40,16 @@ export function defaultDateRange(): DateRangeFilterValue {
   };
 }
 
-export function DateRangeFilter({ onApply, ownerLabel = "Owner", showOwner = true, value }: DateRangeFilterProps) {
+export function DateRangeFilter({
+  onApply,
+  ownerLabel = "Owner",
+  showOwner = true,
+  value,
+}: DateRangeFilterProps) {
   const [draft, setDraft] = useState<DateRangeFilterValue>(value);
   const usersQuery = useQuery({
     enabled: showOwner,
-    queryFn: () => api.get<User[]>("/users/"),
+    queryFn: () => api.get<User[]>("/users/directory"),
     queryKey: ["users", "report-filter"],
     retry: false,
   });
@@ -58,7 +65,12 @@ export function DateRangeFilter({ onApply, ownerLabel = "Owner", showOwner = tru
         <Input
           aria-label="Date from"
           className={dateInputClassName}
-          onChange={(event) => setDraft((current) => ({ ...current, date_from: event.target.value }))}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              date_from: event.target.value,
+            }))
+          }
           type="date"
           value={draft.date_from}
         />
@@ -68,7 +80,9 @@ export function DateRangeFilter({ onApply, ownerLabel = "Owner", showOwner = tru
         <Input
           aria-label="Date to"
           className={dateInputClassName}
-          onChange={(event) => setDraft((current) => ({ ...current, date_to: event.target.value }))}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, date_to: event.target.value }))
+          }
           type="date"
           value={draft.date_to}
         />
@@ -79,7 +93,12 @@ export function DateRangeFilter({ onApply, ownerLabel = "Owner", showOwner = tru
           <select
             aria-label={ownerLabel}
             className={selectClassName}
-            onChange={(event) => setDraft((current) => ({ ...current, owner_id: event.target.value }))}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                owner_id: event.target.value,
+              }))
+            }
             value={draft.owner_id}
           >
             <option value="">All {ownerLabel.toLowerCase()}s</option>

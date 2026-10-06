@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models import (
     Account,
@@ -68,7 +69,9 @@ async def _scalar_name(db: AsyncSession, statement) -> str | None:
     return result.scalar_one_or_none()
 
 
-async def build_deal_response(db: AsyncSession, deal: Deal) -> DealResponse:
+async def build_deal_response(db: AsyncSession, deal: Deal, *, prefetched: bool = False) -> DealResponse:
+    if prefetched:
+        return DealResponse.model_validate(deal).model_copy(update={"pipeline_name":deal.pipeline.name if deal.pipeline else None,"stage_name":deal.stage.name if deal.stage else None,"account_name":deal.account.name if deal.account else None,"contact_name":f"{deal.contact.first_name} {deal.contact.last_name}" if deal.contact else None,"owner_name":deal.owner.full_name if deal.owner else None})
     pipeline_name = await _scalar_name(db, select(Pipeline.name).where(Pipeline.id == deal.pipeline_id))
     stage_name = await _scalar_name(db, select(PipelineStage.name).where(PipelineStage.id == deal.stage_id))
     account_name = await _scalar_name(db, select(Account.name).where(Account.id == deal.account_id))
@@ -114,16 +117,19 @@ async def list_deals(
     page_size: int = 20,
     pipeline_id: UUID | None = None,
     stage_id: UUID | None = None,
+    search: str | None = None,
     owner_id: UUID | None = None,
     status_filter: DealStatus | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
 ) -> list[DealResponse]:
     offset, limit = _pagination(page, page_size)
-    query = select(Deal).where(Deal.is_active.is_(True), _deal_visibility_filter(current_user))
+    query = select(Deal).options(selectinload(Deal.pipeline),selectinload(Deal.stage),selectinload(Deal.account),selectinload(Deal.contact),selectinload(Deal.owner)).where(Deal.is_active.is_(True), _deal_visibility_filter(current_user))
 
     if pipeline_id:
         query = query.where(Deal.pipeline_id == pipeline_id)
+    if search:
+        query = query.where(Deal.title.ilike(f"%{search.strip()}%"))
     if stage_id:
         query = query.where(Deal.stage_id == stage_id)
     if owner_id:
@@ -136,7 +142,7 @@ async def list_deals(
         query = query.where(Deal.expected_close <= date_to)
 
     result = await db.execute(query.order_by(Deal.expected_close.asc()).offset(offset).limit(limit))
-    return [await build_deal_response(db, deal) for deal in result.scalars().all()]
+    return [await build_deal_response(db, deal, prefetched=True) for deal in result.scalars().all()]
 
 
 async def get_deal_model(db: AsyncSession, deal_id: UUID, current_user: User) -> Deal:
@@ -432,6 +438,7 @@ async def get_forecast(
     date_from: date | None = None,
     date_to: date | None = None,
     owner_id: UUID | None = None,
+    currency: str = "USD",
 ) -> DealForecastResponse:
     query = (
         select(Deal, PipelineStage)
@@ -439,6 +446,7 @@ async def get_forecast(
         .where(
             Deal.is_active.is_(True),
             Deal.status == DealStatus.open,
+            Deal.currency == currency,
             _deal_visibility_filter(current_user),
         )
     )
@@ -472,6 +480,7 @@ async def get_forecast(
         entry["weighted"] = float(entry["weighted"]) + float(weighted)
 
     return DealForecastResponse(
+        currency=currency,
         total_weighted=float(total_weighted),
         total_open=float(total_open),
         by_stage=[DealForecastStage(**entry) for entry in by_stage.values()],

@@ -14,7 +14,9 @@ const DASHBOARD_REFETCH_INTERVAL = 300000;
 
 function getErrorMessage(error: unknown): string {
   const apiError = error as Partial<ApiErrorPayload>;
-  return typeof apiError.detail === "string" ? apiError.detail : "Could not load stale deals.";
+  return typeof apiError.detail === "string"
+    ? apiError.detail
+    : "Could not load stale deals.";
 }
 
 function toNumber(value: number | string): number {
@@ -22,7 +24,10 @@ function toNumber(value: number | string): number {
 }
 
 function daysSinceUpdate(deal: Deal): number {
-  return Math.max(14, differenceInCalendarDays(new Date(), new Date(deal.updated_at)));
+  return Math.max(
+    14,
+    differenceInCalendarDays(new Date(), new Date(deal.updated_at)),
+  );
 }
 
 function StaleDealsSkeleton() {
@@ -51,8 +56,12 @@ export function StaleDealsWidget() {
     <section className="rounded-lg border border-slate-200/70 bg-white shadow-sm">
       <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
         <div>
-          <h2 className="text-base font-semibold text-[#0F2444]">Stale Deals</h2>
-          <p className="mt-1 text-sm text-[#64748B]">Deals with no recent activity in 14+ days.</p>
+          <h2 className="text-base font-semibold text-[var(--navy)]">
+            Stale Deals
+          </h2>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            Deals with no recent activity in 14+ days.
+          </p>
         </div>
         {isError ? (
           <button
@@ -60,7 +69,10 @@ export function StaleDealsWidget() {
             onClick={() => void refetch()}
             type="button"
           >
-            <RefreshCcw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} aria-hidden="true" />
+            <RefreshCcw
+              className={cn("h-3.5 w-3.5", isFetching && "animate-spin")}
+              aria-hidden="true"
+            />
             Retry
           </button>
         ) : null}
@@ -74,7 +86,7 @@ export function StaleDealsWidget() {
             {getErrorMessage(error)}
           </div>
         ) : deals.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/40 p-6 text-center text-sm text-[#64748B]">
+          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/40 p-6 text-center text-sm text-[var(--muted-foreground)]">
             No stale deals right now.
           </div>
         ) : (
@@ -86,16 +98,22 @@ export function StaleDealsWidget() {
                 key={deal.id}
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[#0F2444]">{deal.title}</p>
-                  <p className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[#64748B]">
+                  <p className="truncate text-sm font-semibold text-[var(--navy)]">
+                    {deal.title}
+                  </p>
+                  <p className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[var(--muted-foreground)]">
                     <span>{deal.account_name ?? "No account"}</span>
                     <span className="text-slate-300">/</span>
                     <span>{deal.owner_name ?? "Unassigned"}</span>
                   </p>
                 </div>
                 <div className="flex items-center justify-between gap-3 text-right sm:block">
-                  <p className="text-sm font-semibold text-[#0F2444]">{formatCurrency(toNumber(deal.value), deal.currency)}</p>
-                  <p className="mt-1 text-xs font-medium text-amber-700">{daysSinceUpdate(deal)} days quiet</p>
+                  <p className="text-sm font-semibold text-[var(--navy)]">
+                    {formatCurrency(toNumber(deal.value), deal.currency)}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-amber-700">
+                    {daysSinceUpdate(deal)} days quiet
+                  </p>
                 </div>
               </Link>
             ))}

@@ -19,13 +19,23 @@ import {
   YAxis,
 } from "recharts";
 
-import { DateRangeFilter, defaultDateRange, type DateRangeFilterValue } from "@/components/reports/DateRangeFilter";
+import {
+  DateRangeFilter,
+  defaultDateRange,
+  type DateRangeFilterValue,
+} from "@/components/reports/DateRangeFilter";
 import { ExportButtons } from "@/components/reports/ExportButtons";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { chartColors, formatMonth } from "@/components/reports/chart-utils";
 import { api } from "@/lib/api";
-import { formatCurrency } from "@/lib/utils";
-import type { DealVelocityRow, ForecastMonthRow, Pipeline, PipelineSummaryRow, WinLossRow } from "@/types/api";
+import { formatReportCurrency } from "@/lib/utils";
+import type {
+  DealVelocityRow,
+  ForecastMonthRow,
+  Pipeline,
+  PipelineSummaryRow,
+  WinLossRow,
+} from "@/types/api";
 
 interface WinLossSummaryRow {
   group: string;
@@ -116,10 +126,14 @@ function PipelineTooltip({ active, payload }: PipelineTooltipProps) {
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-sm">
-      <p className="font-semibold text-[#0F2444]">{item.stage}</p>
-      <p className="mt-1 text-[#64748B]">Deals: {item.count}</p>
-      <p className="text-[#64748B]">Value: {formatCurrency(item.total_value)}</p>
-      <p className="font-medium text-[#2563EB]">Weighted: {formatCurrency(item.weighted_value)}</p>
+      <p className="font-semibold text-[var(--navy)]">{item.stage}</p>
+      <p className="mt-1 text-[var(--muted-foreground)]">Deals: {item.count}</p>
+      <p className="text-[var(--muted-foreground)]">
+        Value: {formatReportCurrency(item.total_value)}
+      </p>
+      <p className="font-medium text-[var(--primary)]">
+        Weighted: {formatReportCurrency(item.weighted_value)}
+      </p>
     </div>
   );
 }
@@ -132,10 +146,16 @@ function ForecastTooltip({ active, payload }: ForecastTooltipProps) {
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-sm">
-      <p className="font-semibold text-[#0F2444]">{formatMonth(item.month)}</p>
-      <p className="mt-1 text-[#64748B]">Deals: {item.count}</p>
-      <p className="text-[#64748B]">Open: {formatCurrency(item.open_value)}</p>
-      <p className="font-medium text-[#2563EB]">Weighted: {formatCurrency(item.weighted_value)}</p>
+      <p className="font-semibold text-[var(--navy)]">
+        {formatMonth(item.month)}
+      </p>
+      <p className="mt-1 text-[var(--muted-foreground)]">Deals: {item.count}</p>
+      <p className="text-[var(--muted-foreground)]">
+        Open: {formatReportCurrency(item.open_value)}
+      </p>
+      <p className="font-medium text-[var(--primary)]">
+        Weighted: {formatReportCurrency(item.weighted_value)}
+      </p>
     </div>
   );
 }
@@ -148,19 +168,25 @@ function VelocityTooltip({ active, payload }: VelocityTooltipProps) {
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-sm">
-      <p className="font-semibold text-[#0F2444]">{item.stage}</p>
-      <p className="mt-1 text-[#64748B]">{Math.round(item.avg_days * 10) / 10} days average</p>
+      <p className="font-semibold text-[var(--navy)]">{item.stage}</p>
+      <p className="mt-1 text-[var(--muted-foreground)]">
+        {Math.round(item.avg_days * 10) / 10} days average
+      </p>
     </div>
   );
 }
 
 function tooltipCurrency(value: unknown): string {
-  return typeof value === "number" ? formatCurrency(value) : String(value ?? "");
+  return typeof value === "number"
+    ? formatReportCurrency(value)
+    : String(value ?? "");
 }
 
 export function SalesTab() {
   const [chartReady, setChartReady] = useState(false);
-  const [filters, setFilters] = useState<DateRangeFilterValue>(() => defaultDateRange());
+  const [filters, setFilters] = useState<DateRangeFilterValue>(() =>
+    defaultDateRange(),
+  );
   const [pipelineId, setPipelineId] = useState("");
 
   useEffect(() => {
@@ -172,15 +198,27 @@ export function SalesTab() {
     queryKey: ["pipelines", "reports"],
   });
   const pipelineSummaryQuery = useQuery({
-    queryFn: () => api.get<PipelineSummaryRow[]>("/reports/pipeline-summary", exportParams(filters, pipelineId)),
+    queryFn: () =>
+      api.get<PipelineSummaryRow[]>(
+        "/reports/pipeline-summary",
+        exportParams(filters, pipelineId),
+      ),
     queryKey: ["reports", "pipeline-summary", filters, pipelineId],
   });
   const winLossQuery = useQuery({
-    queryFn: () => api.get<WinLossRow[]>("/reports/win-loss", { ...exportParams(filters, pipelineId), group_by: "owner" }),
+    queryFn: () =>
+      api.get<WinLossRow[]>("/reports/win-loss", {
+        ...exportParams(filters, pipelineId),
+        group_by: "owner",
+      }),
     queryKey: ["reports", "win-loss", "owner", filters, pipelineId],
   });
   const forecastQuery = useQuery({
-    queryFn: () => api.get<ForecastMonthRow[]>("/reports/forecast", exportParams(filters, pipelineId)),
+    queryFn: () =>
+      api.get<ForecastMonthRow[]>(
+        "/reports/forecast",
+        exportParams(filters, pipelineId),
+      ),
     queryKey: ["reports", "forecast", filters, pipelineId],
   });
   const velocityQuery = useQuery({
@@ -190,22 +228,47 @@ export function SalesTab() {
         date_to: filters.date_to,
         pipeline_id: pipelineId || undefined,
       }),
-    queryKey: ["reports", "deal-velocity", filters.date_from, filters.date_to, pipelineId],
+    queryKey: [
+      "reports",
+      "deal-velocity",
+      filters.date_from,
+      filters.date_to,
+      pipelineId,
+    ],
   });
 
   const pipelineSummary = pipelineSummaryQuery.data ?? [];
-  const winLossRows = useMemo(() => buildWinLossRows(winLossQuery.data ?? []), [winLossQuery.data]);
+  const winLossRows = useMemo(
+    () => buildWinLossRows(winLossQuery.data ?? []),
+    [winLossQuery.data],
+  );
   const winLossCountData = useMemo<DonutRow[]>(
     () => [
-      { fill: chartColors.green, name: "Won", value: winLossRows.reduce((sum, row) => sum + row.won_count, 0) },
-      { fill: chartColors.red, name: "Lost", value: winLossRows.reduce((sum, row) => sum + row.lost_count, 0) },
+      {
+        fill: chartColors.green,
+        name: "Won",
+        value: winLossRows.reduce((sum, row) => sum + row.won_count, 0),
+      },
+      {
+        fill: chartColors.red,
+        name: "Lost",
+        value: winLossRows.reduce((sum, row) => sum + row.lost_count, 0),
+      },
     ],
     [winLossRows],
   );
   const winLossValueData = useMemo<DonutRow[]>(
     () => [
-      { fill: chartColors.green, name: "Won", value: winLossRows.reduce((sum, row) => sum + row.won_value, 0) },
-      { fill: chartColors.red, name: "Lost", value: winLossRows.reduce((sum, row) => sum + row.lost_value, 0) },
+      {
+        fill: chartColors.green,
+        name: "Won",
+        value: winLossRows.reduce((sum, row) => sum + row.won_value, 0),
+      },
+      {
+        fill: chartColors.red,
+        name: "Lost",
+        value: winLossRows.reduce((sum, row) => sum + row.lost_value, 0),
+      },
     ],
     [winLossRows],
   );
@@ -234,7 +297,12 @@ export function SalesTab() {
       </section>
 
       <ReportCard
-        actions={<ExportButtons params={exportParams(filters, pipelineId)} report="pipeline-summary" />}
+        actions={
+          <ExportButtons
+            params={exportParams(filters, pipelineId)}
+            report="pipeline-summary"
+          />
+        }
         description="Deals by stage with count, total value, and weighted value."
         empty={pipelineSummary.length === 0}
         error={pipelineSummaryQuery.isError}
@@ -245,31 +313,74 @@ export function SalesTab() {
       >
         <div className="h-[320px]">
           <ResponsiveContainer height="100%" width="100%">
-            <BarChart data={pipelineSummary} margin={{ bottom: 8, left: 0, right: 8, top: 8 }}>
+            <BarChart
+              data={pipelineSummary}
+              margin={{ bottom: 8, left: 0, right: 8, top: 8 }}
+            >
               <CartesianGrid stroke="#E2E8F0" vertical={false} />
-              <XAxis axisLine={false} dataKey="stage" fontSize={12} tick={{ fill: chartColors.slate }} tickLine={false} />
-              <YAxis axisLine={false} fontSize={12} tick={{ fill: chartColors.slate }} tickLine={false} yAxisId="count" />
+              <XAxis
+                axisLine={false}
+                dataKey="stage"
+                fontSize={12}
+                tick={{ fill: chartColors.slate }}
+                tickLine={false}
+              />
+              <YAxis
+                axisLine={false}
+                fontSize={12}
+                tick={{ fill: chartColors.slate }}
+                tickLine={false}
+                yAxisId="count"
+              />
               <YAxis
                 axisLine={false}
                 fontSize={12}
                 orientation="right"
                 tick={{ fill: chartColors.slate }}
-                tickFormatter={(value: number) => `$${Math.round(value / 1000)}k`}
+                tickFormatter={(value: number) =>
+                  `$${Math.round(value / 1000)}k`
+                }
                 tickLine={false}
                 yAxisId="value"
               />
-              <Tooltip content={<PipelineTooltip />} cursor={{ fill: chartColors.sky }} />
+              <Tooltip
+                content={<PipelineTooltip />}
+                cursor={{ fill: chartColors.sky }}
+              />
               <Legend />
-              <Bar dataKey="count" fill={chartColors.navy} name="Deal count" radius={[6, 6, 0, 0]} yAxisId="count" />
-              <Bar dataKey="total_value" fill={chartColors.blueSoft} name="Total value" radius={[6, 6, 0, 0]} yAxisId="value" />
-              <Bar dataKey="weighted_value" fill={chartColors.blue} name="Weighted value" radius={[6, 6, 0, 0]} yAxisId="value" />
+              <Bar
+                dataKey="count"
+                fill={chartColors.navy}
+                name="Deal count"
+                radius={[6, 6, 0, 0]}
+                yAxisId="count"
+              />
+              <Bar
+                dataKey="total_value"
+                fill={chartColors.blueSoft}
+                name="Total value"
+                radius={[6, 6, 0, 0]}
+                yAxisId="value"
+              />
+              <Bar
+                dataKey="weighted_value"
+                fill={chartColors.blue}
+                name="Weighted value"
+                radius={[6, 6, 0, 0]}
+                yAxisId="value"
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </ReportCard>
 
       <ReportCard
-        actions={<ExportButtons params={{ ...exportParams(filters, pipelineId), group_by: "owner" }} report="win-loss" />}
+        actions={
+          <ExportButtons
+            params={{ ...exportParams(filters, pipelineId), group_by: "owner" }}
+            report="win-loss"
+          />
+        }
         description="Closed-won vs closed-lost deals by count and value."
         empty={winLossRows.length === 0}
         error={winLossQuery.isError}
@@ -284,7 +395,14 @@ export function SalesTab() {
             <ResponsiveContainer height="100%" width="100%">
               <PieChart>
                 <Tooltip />
-                <Pie data={winLossCountData} dataKey="value" innerRadius={55} nameKey="name" outerRadius={85} paddingAngle={3}>
+                <Pie
+                  data={winLossCountData}
+                  dataKey="value"
+                  innerRadius={55}
+                  nameKey="name"
+                  outerRadius={85}
+                  paddingAngle={3}
+                >
                   {winLossCountData.map((entry) => (
                     <Cell fill={entry.fill} key={entry.name} />
                   ))}
@@ -292,13 +410,22 @@ export function SalesTab() {
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
-            <p className="text-center text-sm font-medium text-[#0F2444]">By Count</p>
+            <p className="text-center text-sm font-medium text-[var(--navy)]">
+              By Count
+            </p>
           </div>
           <div className="h-[220px]">
             <ResponsiveContainer height="100%" width="100%">
               <PieChart>
                 <Tooltip formatter={tooltipCurrency} />
-                <Pie data={winLossValueData} dataKey="value" innerRadius={55} nameKey="name" outerRadius={85} paddingAngle={3}>
+                <Pie
+                  data={winLossValueData}
+                  dataKey="value"
+                  innerRadius={55}
+                  nameKey="name"
+                  outerRadius={85}
+                  paddingAngle={3}
+                >
                   {winLossValueData.map((entry) => (
                     <Cell fill={entry.fill} key={entry.name} />
                   ))}
@@ -306,12 +433,14 @@ export function SalesTab() {
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
-            <p className="text-center text-sm font-medium text-[#0F2444]">By Value</p>
+            <p className="text-center text-sm font-medium text-[var(--navy)]">
+              By Value
+            </p>
           </div>
         </div>
         <div className="mt-6 overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="text-left text-xs uppercase text-[#64748B]">
+            <thead className="text-left text-xs uppercase text-[var(--muted-foreground)]">
               <tr>
                 <th className="px-3 py-2">Owner</th>
                 <th className="px-3 py-2">Won</th>
@@ -323,11 +452,19 @@ export function SalesTab() {
             <tbody>
               {winLossRows.map((row) => (
                 <tr className="border-t border-slate-100" key={row.group}>
-                  <td className="px-3 py-3 font-medium text-[#0F2444]">{row.group}</td>
-                  <td className="px-3 py-3 text-emerald-700">{row.won_count}</td>
+                  <td className="px-3 py-3 font-medium text-[var(--navy)]">
+                    {row.group}
+                  </td>
+                  <td className="px-3 py-3 text-emerald-700">
+                    {row.won_count}
+                  </td>
                   <td className="px-3 py-3 text-red-700">{row.lost_count}</td>
-                  <td className="px-3 py-3">{formatCurrency(row.won_value)}</td>
-                  <td className="px-3 py-3">{formatCurrency(row.lost_value)}</td>
+                  <td className="px-3 py-3">
+                    {formatReportCurrency(row.won_value)}
+                  </td>
+                  <td className="px-3 py-3">
+                    {formatReportCurrency(row.lost_value)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -337,7 +474,12 @@ export function SalesTab() {
 
       <div className="grid gap-6 xl:grid-cols-2">
         <ReportCard
-          actions={<ExportButtons params={exportParams(filters, pipelineId)} report="forecast" />}
+          actions={
+            <ExportButtons
+              params={exportParams(filters, pipelineId)}
+              report="forecast"
+            />
+          }
           description="Weighted monthly forecast for the selected expected-close range."
           empty={forecast.length === 0}
           error={forecastQuery.isError}
@@ -348,32 +490,73 @@ export function SalesTab() {
         >
           <div className="h-[280px]">
             <ResponsiveContainer height="100%" width="100%">
-              <AreaChart data={forecast} margin={{ bottom: 8, left: 0, right: 8, top: 8 }}>
+              <AreaChart
+                data={forecast}
+                margin={{ bottom: 8, left: 0, right: 8, top: 8 }}
+              >
                 <defs>
                   <linearGradient id="forecastFill" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="5%" stopColor={chartColors.blue} stopOpacity={0.28} />
-                    <stop offset="95%" stopColor={chartColors.blue} stopOpacity={0.02} />
+                    <stop
+                      offset="5%"
+                      stopColor={chartColors.blue}
+                      stopOpacity={0.28}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor={chartColors.blue}
+                      stopOpacity={0.02}
+                    />
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="#E2E8F0" vertical={false} />
-                <XAxis axisLine={false} dataKey="month" fontSize={12} tick={{ fill: chartColors.slate }} tickFormatter={formatMonth} tickLine={false} />
+                <XAxis
+                  axisLine={false}
+                  dataKey="month"
+                  fontSize={12}
+                  tick={{ fill: chartColors.slate }}
+                  tickFormatter={formatMonth}
+                  tickLine={false}
+                />
                 <YAxis
                   axisLine={false}
                   fontSize={12}
                   tick={{ fill: chartColors.slate }}
-                  tickFormatter={(value: number) => `$${Math.round(value / 1000)}k`}
+                  tickFormatter={(value: number) =>
+                    `$${Math.round(value / 1000)}k`
+                  }
                   tickLine={false}
                 />
                 <Tooltip content={<ForecastTooltip />} />
-                <ReferenceLine label="Current" stroke={chartColors.amber} strokeDasharray="4 4" x={currentMonth} />
-                <Area dataKey="weighted_value" fill="url(#forecastFill)" name="Weighted value" stroke={chartColors.blue} strokeWidth={2} type="monotone" />
+                <ReferenceLine
+                  label="Current"
+                  stroke={chartColors.amber}
+                  strokeDasharray="4 4"
+                  x={currentMonth}
+                />
+                <Area
+                  dataKey="weighted_value"
+                  fill="url(#forecastFill)"
+                  name="Weighted value"
+                  stroke={chartColors.blue}
+                  strokeWidth={2}
+                  type="monotone"
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </ReportCard>
 
         <ReportCard
-          actions={<ExportButtons params={{ date_from: filters.date_from, date_to: filters.date_to, pipeline_id: pipelineId }} report="deal-velocity" />}
+          actions={
+            <ExportButtons
+              params={{
+                date_from: filters.date_from,
+                date_to: filters.date_to,
+                pipeline_id: pipelineId,
+              }}
+              report="deal-velocity"
+            />
+          }
           description="Average days spent in each pipeline stage."
           empty={velocity.length === 0}
           error={velocityQuery.isError}
@@ -384,12 +567,38 @@ export function SalesTab() {
         >
           <div className="h-[280px]">
             <ResponsiveContainer height="100%" width="100%">
-              <BarChart data={velocity} layout="vertical" margin={{ bottom: 8, left: 0, right: 24, top: 8 }}>
+              <BarChart
+                data={velocity}
+                layout="vertical"
+                margin={{ bottom: 8, left: 0, right: 24, top: 8 }}
+              >
                 <CartesianGrid horizontal={false} stroke="#E2E8F0" />
-                <XAxis axisLine={false} fontSize={12} tick={{ fill: chartColors.slate }} tickLine={false} type="number" />
-                <YAxis axisLine={false} dataKey="stage" fontSize={12} tick={{ fill: chartColors.slate }} tickLine={false} type="category" width={118} />
-                <Tooltip content={<VelocityTooltip />} cursor={{ fill: chartColors.sky }} />
-                <Bar dataKey="avg_days" fill={chartColors.blue} name="Average days" radius={[0, 8, 8, 0]} />
+                <XAxis
+                  axisLine={false}
+                  fontSize={12}
+                  tick={{ fill: chartColors.slate }}
+                  tickLine={false}
+                  type="number"
+                />
+                <YAxis
+                  axisLine={false}
+                  dataKey="stage"
+                  fontSize={12}
+                  tick={{ fill: chartColors.slate }}
+                  tickLine={false}
+                  type="category"
+                  width={118}
+                />
+                <Tooltip
+                  content={<VelocityTooltip />}
+                  cursor={{ fill: chartColors.sky }}
+                />
+                <Bar
+                  dataKey="avg_days"
+                  fill={chartColors.blue}
+                  name="Average days"
+                  radius={[0, 8, 8, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>

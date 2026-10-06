@@ -1,53 +1,65 @@
 @import "tailwindcss";
 
-:root {
-  --background: #f7f8fb;
-  --foreground: #111827;
-  --card: #ffffff;
-  --card-foreground: #111827;
-  --primary: #0f2a44;
-  --primary-foreground: #ffffff;
-  --secondary: #e6f2ef;
-  --secondary-foreground: #16332c;
-  --muted: #eef1f5;
-  --muted-foreground: #64748b;
-  --accent: #d8b45d;
-  --accent-foreground: #1e293b;
-  --destructive: #b91c1c;
-  --destructive-foreground: #ffffff;
-  --border: #d8dee8;
-  --input: #d8dee8;
-  --ring: #2f6f73;
-  --radius: 0.5rem;
-}
+@layer base {
+  :root {
+    --background: #f7f8fb;
+    --foreground: #111827;
+    --card: #ffffff;
+    --card-foreground: #111827;
+    --primary: #2563eb;
+    --navy: #0f2a44;
+    --teal: #0f766e;
+    --primary-foreground: #ffffff;
+    --secondary: #e6f2ef;
+    --secondary-foreground: #16332c;
+    --muted: #eef1f5;
+    --muted-foreground: #64748b;
+    --accent: #d8b45d;
+    --accent-foreground: #1e293b;
+    --destructive: #b91c1c;
+    --destructive-foreground: #ffffff;
+    --border: #d8dee8;
+    --input: #d8dee8;
+    --ring: #2f6f73;
+    --radius: 0.5rem;
+  }
 
-* {
-  box-sizing: border-box;
-}
+  * {
+    box-sizing: border-box;
+  }
 
-html {
-  min-height: 100%;
-  background: var(--background);
-}
+  html {
+    min-height: 100%;
+    background: var(--background);
+  }
 
-body {
-  min-height: 100%;
-  margin: 0;
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-inter), Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
+  body {
+    min-height: 100%;
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family:
+      var(--font-inter),
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      sans-serif;
+  }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
 
-a {
-  color: inherit;
-  text-decoration: none;
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
 @keyframes task-complete-pop {
@@ -67,4 +79,48 @@ a {
 
 .task-complete-pop {
   animation: task-complete-pop 700ms ease-out forwards;
+}
+
+@layer base {
+  ::selection {
+    background: #ccfbf1;
+    color: #0f2a44;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+  input,
+  textarea {
+    caret-color: var(--primary);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: #64748b;
+    opacity: 1;
+  }
+  table,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+  @media (max-width: 640px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }

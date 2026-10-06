@@ -13,10 +13,9 @@ from starlette.requests import Request
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
-from app.auth.jwt import decode_access_token
 from app.utils.http import client_ip
 
-WRITE_METHODS = {"POST", "PATCH", "DELETE"}
+WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 SKIPPED_TABLES = {"audit_logs"}
 
 
@@ -40,7 +39,7 @@ class AuditContextMiddleware(BaseHTTPMiddleware):
         if request.method.upper() in WRITE_METHODS:
             token = audit_context.set(
                 AuditContext(
-                    user_id=_user_id_from_request(request),
+                    user_id=None,  # Assigned only after CRM identity resolution.
                     ip_address=client_ip(request),
                     method=request.method.upper(),
                     path=request.url.path,
@@ -171,18 +170,3 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (list, tuple, set)):
         return [_json_safe(item) for item in value]
     return value
-
-
-def _user_id_from_request(request: Request) -> uuid.UUID | None:
-    auth_header = request.headers.get("authorization", "")
-    if not auth_header.lower().startswith("bearer "):
-        return None
-    try:
-        payload = decode_access_token(auth_header.split(" ", 1)[1])
-    except Exception:
-        return None
-    raw_user_id = payload.get("sub") or payload.get("user_id") or payload.get("userId") or payload.get("id")
-    try:
-        return uuid.UUID(str(raw_user_id)) if raw_user_id else None
-    except ValueError:
-        return None

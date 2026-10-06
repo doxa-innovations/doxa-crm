@@ -163,4 +163,4 @@ class SalesQuotaCreate(BaseModel):
     period_start: date
     period_end: date
     quota_amount: Decimal = Field(gt=0)
-    currency: str = Field(default="USD", min_length=3, max_length=3)
+    currency: str = Field(default="USD", pattern="^[A-Z]{3}$")

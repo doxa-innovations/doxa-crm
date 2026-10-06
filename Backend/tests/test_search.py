@@ -166,6 +166,7 @@ async def test_global_search_route_formats_results_and_filters_sales_rep(app, mo
     user = app.state.current_user
 
     class FakeSearchClient:
+        enabled = True
         async def search(self, index, query, *, limit=20, filter=None):
             calls.append((index, filter))
             if index == "contacts":

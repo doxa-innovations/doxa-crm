@@ -13,7 +13,7 @@ def send_email(to: str, subject: str, html: str) -> bool:
     settings = get_settings()
     if not settings.resend_api_key:
         logger.info("email_dry_run to=%s subject=%s", to, subject)
-        return True
+        return False
 
     try:
         with httpx.Client(timeout=15) as client:

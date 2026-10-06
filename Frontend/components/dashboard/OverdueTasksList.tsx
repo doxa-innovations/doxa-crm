@@ -15,7 +15,9 @@ const DASHBOARD_REFETCH_INTERVAL = 300000;
 
 function getErrorMessage(error: unknown): string {
   const apiError = error as Partial<ApiErrorPayload>;
-  return typeof apiError.detail === "string" ? apiError.detail : "Could not load overdue tasks.";
+  return typeof apiError.detail === "string"
+    ? apiError.detail
+    : "Could not load overdue tasks.";
 }
 
 function linkedEntityLabel(task: Task): string {
@@ -43,7 +45,10 @@ function getDaysOverdue(task: Task): number {
     return 0;
   }
 
-  return Math.max(0, differenceInCalendarDays(new Date(), new Date(task.due_at)));
+  return Math.max(
+    0,
+    differenceInCalendarDays(new Date(), new Date(task.due_at)),
+  );
 }
 
 function OverdueTasksSkeleton() {
@@ -76,7 +81,9 @@ export function OverdueTasksList() {
     mutationFn: (id: string) => api.post<Task>(`/tasks/${id}/complete`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      void queryClient.invalidateQueries({ queryKey: ["reports", "dashboard"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["reports", "dashboard"],
+      });
       void queryClient.invalidateQueries({ queryKey: ["tasks", "overdue"] });
     },
   });
@@ -87,8 +94,12 @@ export function OverdueTasksList() {
     <section className="rounded-lg border border-slate-200/70 bg-white shadow-sm">
       <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
         <div>
-          <h2 className="text-base font-semibold text-[#0F2444]">Overdue Tasks</h2>
-          <p className="mt-1 text-sm text-[#64748B]">The oldest overdue work that needs attention.</p>
+          <h2 className="text-base font-semibold text-[var(--navy)]">
+            Overdue Tasks
+          </h2>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            The oldest overdue work that needs attention.
+          </p>
         </div>
         {tasksQuery.isError ? (
           <button
@@ -96,7 +107,13 @@ export function OverdueTasksList() {
             onClick={() => void tasksQuery.refetch()}
             type="button"
           >
-            <RefreshCcw className={cn("h-3.5 w-3.5", tasksQuery.isFetching && "animate-spin")} aria-hidden="true" />
+            <RefreshCcw
+              className={cn(
+                "h-3.5 w-3.5",
+                tasksQuery.isFetching && "animate-spin",
+              )}
+              aria-hidden="true"
+            />
             Retry
           </button>
         ) : null}
@@ -110,14 +127,15 @@ export function OverdueTasksList() {
             {getErrorMessage(tasksQuery.error)}
           </div>
         ) : tasks.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/40 p-6 text-center text-sm text-[#64748B]">
+          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/40 p-6 text-center text-sm text-[var(--muted-foreground)]">
             No overdue tasks - you're on top of it.
           </div>
         ) : (
           <div className="space-y-3">
             {tasks.map((task) => {
               const daysOverdue = getDaysOverdue(task);
-              const ownerName = task.owner_name ?? task.assigned_to_name ?? "Unassigned";
+              const ownerName =
+                task.owner_name ?? task.assigned_to_name ?? "Unassigned";
 
               return (
                 <div
@@ -126,12 +144,14 @@ export function OverdueTasksList() {
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-[#0F2444]">{task.title}</p>
+                      <p className="truncate text-sm font-semibold text-[var(--navy)]">
+                        {task.title}
+                      </p>
                       <span className="rounded-full border border-red-100 bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600">
                         {daysOverdue}d overdue
                       </span>
                     </div>
-                    <p className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[#64748B]">
+                    <p className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[var(--muted-foreground)]">
                       <span>{linkedEntityLabel(task)}</span>
                       <span className="text-slate-300">/</span>
                       <span>Owner: {ownerName}</span>
@@ -139,7 +159,10 @@ export function OverdueTasksList() {
                   </div>
                   {canWriteTasks ? (
                     <Button
-                      disabled={completeTask.isPending && completeTask.variables === task.id}
+                      disabled={
+                        completeTask.isPending &&
+                        completeTask.variables === task.id
+                      }
                       onClick={() => completeTask.mutate(task.id)}
                       size="sm"
                       variant="outline"

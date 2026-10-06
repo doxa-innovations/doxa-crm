@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 from uuid import UUID
 
@@ -66,6 +66,9 @@ class LeadScoreResponse(BaseModel):
 
 
 class LeadConvertRequest(BaseModel):
+    account_id: UUID | None = None
+    currency: str = Field(default="USD", pattern="^[A-Z]{3}$")
+    expected_close: date | None = None
     create_account: bool = False
     account_name: str | None = Field(default=None, max_length=255)
     create_deal: bool = False

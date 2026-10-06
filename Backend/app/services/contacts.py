@@ -78,6 +78,7 @@ async def build_contact_response(db: AsyncSession, contact: Contact) -> ContactR
         tags=list(contact.tags or []),
         custom_fields=dict(contact.custom_fields or {}),
         is_active=contact.is_active,
+        email_opted_out_at=contact.email_opted_out_at,
         sms_opted_in_at=contact.sms_opted_in_at,
         sms_opted_out_at=contact.sms_opted_out_at,
         created_at=contact.created_at,
@@ -100,8 +101,9 @@ async def list_contacts(
     offset, limit = _pagination(page, page_size)
 
     query = (
-        select(Contact)
+        select(Contact, Account.name, User.full_name)
         .outerjoin(Account, Contact.account_id == Account.id)
+        .outerjoin(User, Contact.owner_id == User.id)
         .where(Contact.is_active.is_(True), contact_visibility_filter(current_user))
     )
 
@@ -128,7 +130,7 @@ async def list_contacts(
     query = _apply_contact_sort(query, sort_by).offset(offset).limit(limit)
     result = await db.execute(query)
 
-    return [await build_contact_response(db, contact) for contact in result.scalars().all()]
+    return [ContactResponse.model_validate(contact).model_copy(update={"account_name": account_name, "owner_name": owner_name}) for contact, account_name, owner_name in result.all()]
 
 
 def _apply_contact_sort(query: Select[tuple[Contact]], sort_by: str) -> Select[tuple[Contact]]:
@@ -136,10 +138,10 @@ def _apply_contact_sort(query: Select[tuple[Contact]], sort_by: str) -> Select[t
         sort_by = "created_at"
 
     if sort_by == "last_name":
-        return query.order_by(Contact.last_name.asc(), Contact.first_name.asc())
+        return query.order_by(Contact.last_name.asc(), Contact.first_name.asc(), Contact.id)
     if sort_by == "company":
-        return query.order_by(Account.name.asc().nulls_last(), Contact.last_name.asc())
-    return query.order_by(Contact.created_at.desc())
+        return query.order_by(Account.name.asc().nulls_last(), Contact.last_name.asc(), Contact.id)
+    return query.order_by(Contact.created_at.desc(), Contact.id)
 
 
 async def get_contact_model(

@@ -249,6 +249,8 @@ async def test_read_only_user_cannot_create_lead(app, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_convert_lead_route(app, monkeypatch):
+    # This test isolates conversion routing; real visibility is covered separately.
+    app.dependency_overrides[leads_router_module.require_visible_record] = lambda: None
     lead_id = uuid4()
     contact_id = uuid4()
     account_id = uuid4()
@@ -290,7 +292,10 @@ async def test_convert_lead_route(app, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_import_leads_from_csv_imports_valid_and_skips_invalid():
+async def test_import_leads_from_csv_imports_valid_and_skips_invalid(monkeypatch):
+    async def fake_sync(lead):
+        return None
+    monkeypatch.setattr("app.services.leads.search_service.sync_lead_to_search", fake_sync)
     current_user = make_user()
     db = FakeSession(
         [
