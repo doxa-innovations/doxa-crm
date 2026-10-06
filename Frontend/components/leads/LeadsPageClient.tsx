@@ -1,10 +1,12 @@
 "use client";
+import { useListState } from "@/hooks/useListState";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, FileUp, Plus, Search, UserCheck } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { SavedViews } from "@/components/shared/SavedViews";
 import { AssignLeadDialog } from "@/components/leads/AssignLeadDialog";
 import { ConvertModal } from "@/components/leads/ConvertModal";
 import { DuplicatesView } from "@/components/leads/DuplicatesView";
@@ -20,13 +22,33 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 import { usePermissions } from "@/lib/permissions";
-import type { DuplicateLeadPair, Lead, LeadSource, LeadStatus, User } from "@/types/api";
+import type {
+  DuplicateLeadPair,
+  Lead,
+  LeadSource,
+  LeadStatus,
+  User,
+} from "@/types/api";
 
 const PAGE_SIZE = 20;
-const leadStatuses: LeadStatus[] = ["new", "contacted", "qualified", "disqualified", "converted"];
-const leadSources: LeadSource[] = ["website", "referral", "social", "cold_outreach", "event", "campaign"];
+const leadStatuses: LeadStatus[] = [
+  "new",
+  "contacted",
+  "qualified",
+  "disqualified",
+  "converted",
+];
+const leadSources: LeadSource[] = [
+  "website",
+  "referral",
+  "social",
+  "cold_outreach",
+  "event",
+  "campaign",
+];
 
 interface LeadFilters {
+  search: string;
   assigned_to: string;
   max_score: string;
   min_score: string;
@@ -46,11 +68,16 @@ function optionLabel(value: string): string {
 }
 
 function sourcePill(source: string) {
-  return <span className="rounded-full bg-[#EFF6FF] px-2.5 py-1 text-xs font-medium text-[#2563EB]">{optionLabel(source)}</span>;
+  return (
+    <span className="rounded-full bg-[var(--background)] px-2.5 py-1 text-xs font-medium text-[var(--primary)]">
+      {optionLabel(source)}
+    </span>
+  );
 }
 
 function toQueryParams(page: number, filters: LeadFilters) {
   return {
+    search: filters.search || undefined,
     assigned_to: filters.assigned_to || undefined,
     max_score: filters.max_score ? Number(filters.max_score) : undefined,
     min_score: filters.min_score ? Number(filters.min_score) : undefined,
@@ -65,8 +92,9 @@ function toQueryParams(page: number, filters: LeadFilters) {
 export function LeadsPageClient({ view }: LeadsPageClientProps) {
   const queryClient = useQueryClient();
   const { canWriteLeads } = usePermissions();
-  const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<LeadFilters>({
+  const [bulkResult, setBulkResult] = useState("");
+  const { filters, setFilters, page, setPage } = useListState<LeadFilters>({
+    search: "",
     assigned_to: "",
     max_score: "",
     min_score: "",
@@ -85,26 +113,38 @@ export function LeadsPageClient({ view }: LeadsPageClientProps) {
     queryKey: ["leads", "list", page, filters],
   });
   const duplicatesQuery = useQuery({
-    queryFn: () => api.get<DuplicateLeadPair[]>("/leads/duplicates", { page_size: 100 }),
+    queryFn: () =>
+      api.get<DuplicateLeadPair[]>("/leads/duplicates", { page_size: 100 }),
     queryKey: ["leads", "duplicates", "banner"],
   });
   const usersQuery = useQuery({
-    queryFn: () => api.get<User[]>("/users/"),
+    queryFn: () => api.get<User[]>("/users/directory"),
     queryKey: ["users", "lead-filter-options"],
     retry: false,
   });
   const deleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      await Promise.all(ids.map((id) => api.delete<void>(`/leads/${id}`)));
+      const results = await Promise.allSettled(
+        ids.map((id) => api.delete<void>(`/leads/${id}`)),
+      );
+      return {
+        failed: ids.filter((_, index) => results[index].status === "rejected"),
+        succeeded: results.filter((r) => r.status === "fulfilled").length,
+      };
     },
-    onSuccess: () => {
-      setSelectedIds(new Set());
+    meta: { suppressToast: true },
+    onSuccess: ({ failed, succeeded }) => {
+      setSelectedIds(new Set(failed));
+      setBulkResult(
+        `${succeeded} archived. ${failed.length} failed${failed.length ? "; failed records remain selected for retry" : ""}.`,
+      );
       void queryClient.invalidateQueries({ queryKey: ["leads"] });
     },
   });
 
   const leads = leadsQuery.data ?? [];
-  const allPageSelected = leads.length > 0 && leads.every((lead) => selectedIds.has(lead.id));
+  const allPageSelected =
+    leads.length > 0 && leads.every((lead) => selectedIds.has(lead.id));
   const duplicateCount = duplicatesQuery.data?.length ?? 0;
   const duplicateView = view === "duplicates";
 
@@ -159,7 +199,10 @@ export function LeadsPageClient({ view }: LeadsPageClientProps) {
         : []),
       {
         cell: (lead) => (
-          <Link className="font-semibold text-[#0F2444] hover:text-[#2563EB]" href={`/leads/${lead.id}`}>
+          <Link
+            className="font-semibold text-[var(--navy)] hover:text-[var(--primary)]"
+            href={`/leads/${lead.id}`}
+          >
             {lead.full_name}
           </Link>
         ),
@@ -168,16 +211,41 @@ export function LeadsPageClient({ view }: LeadsPageClientProps) {
       },
       { accessor: "company", header: "Company", id: "company" },
       { accessor: "email", header: "Email", id: "email" },
-      { cell: (lead) => sourcePill(lead.source), header: "Source", id: "source" },
-      { cell: (lead) => <LeadScoreBar score={lead.score} />, header: "Score", id: "score" },
-      { cell: (lead) => <StatusPill status={lead.status} type="lead" />, header: "Status", id: "status" },
-      { cell: (lead) => lead.assigned_to_name ?? "Unassigned", header: "Assigned To", id: "assigned" },
-      { cell: (lead) => formatDate(lead.created_at), header: "Created", id: "created" },
+      {
+        cell: (lead) => sourcePill(lead.source),
+        header: "Source",
+        id: "source",
+      },
+      {
+        cell: (lead) => <LeadScoreBar score={lead.score} />,
+        header: "Score",
+        id: "score",
+      },
+      {
+        cell: (lead) => <StatusPill status={lead.status} type="lead" />,
+        header: "Status",
+        id: "status",
+      },
+      {
+        cell: (lead) => lead.assigned_to_name ?? "Unassigned",
+        header: "Assigned To",
+        id: "assigned",
+      },
+      {
+        cell: (lead) => formatDate(lead.created_at),
+        header: "Created",
+        id: "created",
+      },
       ...(canWriteLeads
         ? [
             {
               cell: (lead: Lead) => (
-                <Button onClick={() => setConvertLead(lead)} size="sm" type="button" variant="outline">
+                <Button
+                  onClick={() => setConvertLead(lead)}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
                   {lead.status === "converted" ? "Contact" : "Convert"}
                 </Button>
               ),
@@ -199,24 +267,45 @@ export function LeadsPageClient({ view }: LeadsPageClientProps) {
   return (
     <div className="grid gap-6">
       <PageHeader
-        primaryAction={canWriteLeads ? { icon: Plus, label: "New Lead", onClick: () => setFormOpen(true) } : undefined}
+        primaryAction={
+          canWriteLeads
+            ? {
+                icon: Plus,
+                label: "New Lead",
+                onClick: () => setFormOpen(true),
+              }
+            : undefined
+        }
         subtitle="Review incoming leads, ownership, and conversion readiness."
         title="Leads"
       />
 
       {canWriteLeads ? (
         <div className="flex flex-wrap gap-3">
-          <Button onClick={() => setImportOpen(true)} type="button" variant="outline">
+          <Button
+            onClick={() => setImportOpen(true)}
+            type="button"
+            variant="outline"
+          >
             <FileUp className="h-4 w-4" aria-hidden="true" />
             Import CSV
           </Button>
         </div>
       ) : (
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#64748B] shadow-sm">
-          You have read-only access. You can view leads, but cannot create, edit, delete, assign, score, import, merge, or convert them.
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[var(--muted-foreground)] shadow-sm">
+          You have read-only access. You can view leads, but cannot create,
+          edit, delete, assign, score, import, merge, or convert them.
         </div>
       )}
 
+      {bulkResult && (
+        <p
+          role="status"
+          className="rounded border border-amber-200 bg-amber-50 p-3 text-sm"
+        >
+          {bulkResult}
+        </p>
+      )}
       {duplicateCount > 0 && !duplicateView ? (
         <Link
           className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 shadow-sm hover:bg-amber-100"
@@ -230,12 +319,47 @@ export function LeadsPageClient({ view }: LeadsPageClientProps) {
         <DuplicatesView canWriteLeads={canWriteLeads} />
       ) : (
         <>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setFilters({
+                search: "",
+                assigned_to: "",
+                max_score: "",
+                min_score: "",
+                source: "",
+                status: "",
+              });
+              setPage(1);
+            }}
+          >
+            Reset filters
+          </Button>
+          <SavedViews
+            scope="leads"
+            value={filters}
+            onLoad={(saved) => {
+              setFilters(saved);
+              setPage(1);
+            }}
+          />
+          <label className="grid gap-2 text-sm font-medium">
+            Search leads
+            <Input
+              placeholder="Name, email, or company"
+              value={filters.search}
+              onChange={(e) => updateFilter("search", e.target.value)}
+            />
+          </label>
           <section className="rounded-xl bg-white p-4 shadow-sm">
             <div className="grid gap-3 lg:grid-cols-[minmax(150px,1fr)_minmax(150px,1fr)_minmax(180px,1fr)_minmax(120px,0.7fr)_minmax(120px,0.7fr)]">
               <div>
                 <select
                   className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
-                  onChange={(event) => updateFilter("status", event.target.value)}
+                  aria-label="Lead status"
+                  onChange={(event) =>
+                    updateFilter("status", event.target.value)
+                  }
                   value={filters.status}
                 >
                   <option value="">All statuses</option>
@@ -249,7 +373,10 @@ export function LeadsPageClient({ view }: LeadsPageClientProps) {
               <div>
                 <select
                   className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
-                  onChange={(event) => updateFilter("source", event.target.value)}
+                  aria-label="Lead source"
+                  onChange={(event) =>
+                    updateFilter("source", event.target.value)
+                  }
                   value={filters.source}
                 >
                   <option value="">All sources</option>
@@ -263,7 +390,10 @@ export function LeadsPageClient({ view }: LeadsPageClientProps) {
               <div>
                 <select
                   className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
-                  onChange={(event) => updateFilter("assigned_to", event.target.value)}
+                  aria-label="Assigned to"
+                  onChange={(event) =>
+                    updateFilter("assigned_to", event.target.value)
+                  }
                   value={filters.assigned_to}
                 >
                   <option value="">All assignees</option>
@@ -276,12 +406,20 @@ export function LeadsPageClient({ view }: LeadsPageClientProps) {
               </div>
               <div>
                 <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]" aria-hidden="true" />
+                  <span
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-600"
+                    aria-hidden="true"
+                  >
+                    ≥
+                  </span>
                   <Input
                     className="pl-9"
                     max={100}
                     min={0}
-                    onChange={(event) => updateFilter("min_score", event.target.value)}
+                    aria-label="Minimum score"
+                    onChange={(event) =>
+                      updateFilter("min_score", event.target.value)
+                    }
                     placeholder="0"
                     type="number"
                     value={filters.min_score}
@@ -292,7 +430,10 @@ export function LeadsPageClient({ view }: LeadsPageClientProps) {
                 <Input
                   max={100}
                   min={0}
-                  onChange={(event) => updateFilter("max_score", event.target.value)}
+                  aria-label="Maximum score"
+                  onChange={(event) =>
+                    updateFilter("max_score", event.target.value)
+                  }
                   placeholder="100"
                   type="number"
                   value={filters.max_score}
@@ -303,9 +444,16 @@ export function LeadsPageClient({ view }: LeadsPageClientProps) {
 
           {canWriteLeads && selectedIds.size > 0 ? (
             <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 shadow-sm">
-              <p className="text-sm font-medium text-[#0F2444]">{selectedIds.size} selected</p>
+              <p className="text-sm font-medium text-[var(--navy)]">
+                {selectedIds.size} selected
+              </p>
               <div className="flex gap-2">
-                <Button onClick={() => setAssignOpen(true)} size="sm" type="button" variant="outline">
+                <Button
+                  onClick={() => setAssignOpen(true)}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
                   <UserCheck className="h-4 w-4" aria-hidden="true" />
                   Assign
                 </Button>
@@ -329,6 +477,8 @@ export function LeadsPageClient({ view }: LeadsPageClientProps) {
             emptyMessage="No leads found."
             getRowKey={(lead) => lead.id}
             isLoading={leadsQuery.isLoading}
+            error={leadsQuery.isError}
+            onRetry={() => leadsQuery.refetch()}
             pagination={{
               hasNextPage: leads.length === PAGE_SIZE,
               page,
@@ -338,7 +488,9 @@ export function LeadsPageClient({ view }: LeadsPageClientProps) {
           />
 
           {leadsQuery.isError ? (
-            <div className="rounded-xl border border-red-100 bg-white p-4 text-sm text-red-700 shadow-sm">Could not load leads.</div>
+            <div className="rounded-xl border border-red-100 bg-white p-4 text-sm text-red-700 shadow-sm">
+              Could not load leads.
+            </div>
           ) : null}
         </>
       )}
@@ -347,7 +499,15 @@ export function LeadsPageClient({ view }: LeadsPageClientProps) {
         <>
           <LeadForm onOpenChange={setFormOpen} open={formOpen} />
           <ImportModal onOpenChange={setImportOpen} open={importOpen} />
-          {convertLead ? <ConvertModal lead={convertLead} onOpenChange={(open) => (!open ? setConvertLead(null) : undefined)} open={Boolean(convertLead)} /> : null}
+          {convertLead ? (
+            <ConvertModal
+              lead={convertLead}
+              onOpenChange={(open) =>
+                !open ? setConvertLead(null) : undefined
+              }
+              open={Boolean(convertLead)}
+            />
+          ) : null}
           <AssignLeadDialog
             leadIds={Array.from(selectedIds)}
             onAssigned={() => setSelectedIds(new Set())}

@@ -255,6 +255,7 @@ async def test_public_portal_endpoint_does_not_require_auth(app, monkeypatch):
     async def fake_get_portal_project(db, portal_token_arg):
         assert portal_token_arg == str(portal_token)
         return ProjectPortalResponse(
+            updated_at=datetime.now(timezone.utc),
             project_name="Acme Onboarding",
             account_name="Acme",
             health=ProjectHealth.yellow,

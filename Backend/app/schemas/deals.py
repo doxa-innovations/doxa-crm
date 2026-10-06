@@ -159,6 +159,7 @@ class DealForecastStage(BaseModel):
 
 
 class DealForecastResponse(BaseModel):
+    currency: str = "USD"
     total_weighted: float
     total_open: float
     by_stage: list[DealForecastStage]

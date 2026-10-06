@@ -31,13 +31,22 @@ from app.schemas.reports import (
 )
 from app.services import reports as reports_service
 
+async def get_report_db(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+    currency: Annotated[str, Query(pattern="^[A-Z]{3}$")] = "USD",
+):
+    from app.services.report_scope import ReportSession
+    return ReportSession(db, user, currency)
+
+
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
 
 @router.get("/pipeline-summary", response_model=list[PipelineSummaryRow])
 async def get_pipeline_summary(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
     pipeline_id: UUID | None = None,
     owner_id: UUID | None = None,
     date_from: date | None = None,
@@ -55,7 +64,7 @@ async def get_pipeline_summary(
 @router.get("/deal-velocity", response_model=list[DealVelocityRow])
 async def get_deal_velocity(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
     pipeline_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -71,7 +80,7 @@ async def get_deal_velocity(
 @router.get("/win-loss", response_model=list[WinLossRow])
 async def get_win_loss(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
     group_by: Annotated[str, Query(pattern="^(owner|source|lost_reason)$")] = "owner",
     pipeline_id: UUID | None = None,
     owner_id: UUID | None = None,
@@ -91,7 +100,7 @@ async def get_win_loss(
 @router.get("/forecast", response_model=list[ForecastMonthRow])
 async def get_forecast(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
     pipeline_id: UUID | None = None,
     owner_id: UUID | None = None,
     date_from: date | None = None,
@@ -109,7 +118,7 @@ async def get_forecast(
 @router.get("/quota", response_model=list[QuotaRow])
 async def get_quota(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
     date_from: date | None = None,
     date_to: date | None = None,
 ) -> list[QuotaRow]:
@@ -119,7 +128,7 @@ async def get_quota(
 @router.get("/lead-volume", response_model=list[LeadVolumeRow])
 async def get_lead_volume(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
     date_from: date | None = None,
     date_to: date | None = None,
     group_by: Annotated[str, Query(pattern="^(source|campaign|week|month)$")] = "source",
@@ -130,7 +139,7 @@ async def get_lead_volume(
 @router.get("/lead-funnel", response_model=LeadFunnelResponse)
 async def get_lead_funnel(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
 ) -> LeadFunnelResponse:
     return await reports_service.lead_funnel(db)
 
@@ -138,7 +147,7 @@ async def get_lead_funnel(
 @router.get("/lead-response-time", response_model=list[LeadResponseTimeRow])
 async def get_lead_response_time(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
 ) -> list[LeadResponseTimeRow]:
     return await reports_service.lead_response_time(db)
 
@@ -146,7 +155,7 @@ async def get_lead_response_time(
 @router.get("/activity-volume", response_model=list[ActivityVolumeRow])
 async def get_activity_volume(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
     date_from: date | None = None,
     date_to: date | None = None,
 ) -> list[ActivityVolumeRow]:
@@ -156,7 +165,7 @@ async def get_activity_volume(
 @router.get("/overdue-tasks", response_model=list[OverdueTaskRow])
 async def get_overdue_tasks(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
 ) -> list[OverdueTaskRow]:
     return await reports_service.overdue_tasks(db)
 
@@ -164,7 +173,7 @@ async def get_overdue_tasks(
 @router.get("/sequence-performance", response_model=list[SequencePerformanceRow])
 async def get_sequence_performance(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
 ) -> list[SequencePerformanceRow]:
     return await reports_service.sequence_performance(db)
 
@@ -172,7 +181,7 @@ async def get_sequence_performance(
 @router.get("/customer-health", response_model=list[CustomerHealthRow])
 async def get_customer_health(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
 ) -> list[CustomerHealthRow]:
     return await reports_service.customer_health(db)
 
@@ -180,7 +189,7 @@ async def get_customer_health(
 @router.get("/renewal-pipeline", response_model=list[RenewalPipelineRow])
 async def get_renewal_pipeline(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
 ) -> list[RenewalPipelineRow]:
     return await reports_service.renewal_pipeline(db)
 
@@ -189,7 +198,7 @@ async def get_renewal_pipeline(
 async def build_custom_report(
     report_in: CustomReportRequest,
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
 ) -> CustomReportResponse:
     return await reports_service.custom_report(db, report_in)
 
@@ -198,7 +207,7 @@ async def build_custom_report(
 async def export_custom_xlsx(
     report_in: CustomReportRequest,
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
 ) -> Response:
     report = await reports_service.custom_report(db, report_in)
     content = reports_service.rows_to_xlsx(f"{report_in.entity}-custom-report", report.columns, report.rows)
@@ -213,7 +222,7 @@ async def export_custom_xlsx(
 @router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
 ) -> DashboardResponse:
     return await reports_service.dashboard(db)
 
@@ -222,7 +231,7 @@ async def get_dashboard(
 async def export_csv(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
     report: str,
 ) -> Response:
     columns, rows = await reports_service.report_rows_for_export(db, report, _parse_export_params(request))
@@ -239,7 +248,7 @@ async def export_csv(
 async def export_xlsx(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
     report: str,
 ) -> Response:
     columns, rows = await reports_service.report_rows_for_export(db, report, _parse_export_params(request))
@@ -256,7 +265,7 @@ async def export_xlsx(
 async def export_pdf(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_report_db)],
     report: str,
 ) -> Response:
     columns, rows = await reports_service.report_rows_for_export(db, report, _parse_export_params(request))
@@ -322,7 +331,7 @@ def _build_pdf(report: str, columns: list[str], rows: list[list]) -> bytes:
         padded = list(row[:column_count]) + [""] * max(column_count - len(row), 0)
         return [pdf_cell(value, cell_style) for value in padded]
 
-    table_data = [[pdf_cell(column, header_style) for column in columns]] + [row_cells(row) for row in rows[:200]]
+    table_data = [[pdf_cell(column, header_style) for column in columns]] + [row_cells(row) for row in rows]
     table = Table(table_data, colWidths=column_widths, repeatRows=1, hAlign="LEFT")
     table.setStyle(
         TableStyle(

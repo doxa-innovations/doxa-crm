@@ -1,4 +1,10 @@
 "use client";
+import { SavedViews } from "@/components/shared/SavedViews";
+import { useListState } from "@/hooks/useListState";
+import {
+  useRecordOptions,
+  RecordOptionsStatus,
+} from "@/hooks/useRecordOptions";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, Plus, Search, Users } from "lucide-react";
@@ -31,17 +37,24 @@ function renderTags(tags: string[]) {
   const hiddenCount = Math.max(0, tags.length - visibleTags.length);
 
   if (tags.length === 0) {
-    return <span className="text-[#64748B]">No tags</span>;
+    return <span className="text-[var(--muted-foreground)]">No tags</span>;
   }
 
   return (
     <div className="flex max-w-64 flex-wrap gap-1">
       {visibleTags.map((tag) => (
-        <span className="rounded-full bg-[#EFF6FF] px-2 py-1 text-xs font-medium text-[#2563EB]" key={tag}>
+        <span
+          className="rounded-full bg-[var(--background)] px-2 py-1 text-xs font-medium text-[var(--primary)]"
+          key={tag}
+        >
           {tag}
         </span>
       ))}
-      {hiddenCount > 0 ? <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-[#64748B]">+{hiddenCount} more</span> : null}
+      {hiddenCount > 0 ? (
+        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-[var(--muted-foreground)]">
+          +{hiddenCount} more
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -60,8 +73,7 @@ function toQueryParams(page: number, filters: ContactFilters) {
 export function ContactsPageClient() {
   const queryClient = useQueryClient();
   const { canWriteContacts } = usePermissions();
-  const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<ContactFilters>({
+  const { filters, setFilters, page, setPage } = useListState<ContactFilters>({
     account_id: "",
     owner_id: "",
     search: "",
@@ -71,15 +83,16 @@ export function ContactsPageClient() {
   const [archiveContact, setArchiveContact] = useState<Contact | null>(null);
 
   const contactsQuery = useQuery({
-    queryFn: () => api.get<Contact[]>("/contacts/", toQueryParams(page, filters)),
+    queryFn: () =>
+      api.get<Contact[]>("/contacts/", toQueryParams(page, filters)),
     queryKey: ["contacts", "list", page, filters],
   });
-  const accountsQuery = useQuery({
-    queryFn: () => api.get<Account[]>("/accounts/", { page_size: 100 }),
-    queryKey: ["accounts", "filter-options"],
-  });
+  const accountsQuery = useRecordOptions<Account>("/accounts/", {}, [
+    "accounts",
+    "contacts-filters",
+  ]);
   const usersQuery = useQuery({
-    queryFn: () => api.get<User[]>("/users/"),
+    queryFn: () => api.get<User[]>("/users/directory"),
     queryKey: ["users", "filter-options"],
     retry: false,
   });
@@ -97,7 +110,10 @@ export function ContactsPageClient() {
     () => [
       {
         cell: (contact) => (
-          <Link className="font-semibold text-[#0F2444] hover:text-[#2563EB]" href={`/contacts/${contact.id}`}>
+          <Link
+            className="font-semibold text-[var(--navy)] hover:text-[var(--primary)]"
+            href={`/contacts/${contact.id}`}
+          >
             {contact.first_name} {contact.last_name}
           </Link>
         ),
@@ -107,20 +123,35 @@ export function ContactsPageClient() {
       {
         cell: (contact) =>
           contact.account_id ? (
-            <Link className="text-[#2563EB] hover:underline" href={`/accounts/${contact.account_id}`}>
+            <Link
+              className="text-[var(--primary)] hover:underline"
+              href={`/accounts/${contact.account_id}`}
+            >
               {contact.account_name ?? "Linked account"}
             </Link>
           ) : (
-            <span className="text-[#64748B]">No account</span>
+            <span className="text-[var(--muted-foreground)]">No account</span>
           ),
         header: "Company",
         id: "company",
       },
       { accessor: "email", header: "Email", id: "email" },
       { accessor: "title", header: "Title", id: "title" },
-      { cell: (contact) => renderTags(contact.tags), header: "Tags", id: "tags" },
-      { cell: (contact) => contact.owner_name ?? "Unassigned", header: "Owner", id: "owner" },
-      { cell: (contact) => formatDate(contact.created_at), header: "Created", id: "created" },
+      {
+        cell: (contact) => renderTags(contact.tags),
+        header: "Tags",
+        id: "tags",
+      },
+      {
+        cell: (contact) => contact.owner_name ?? "Unassigned",
+        header: "Owner",
+        id: "owner",
+      },
+      {
+        cell: (contact) => formatDate(contact.created_at),
+        header: "Created",
+        id: "created",
+      },
       {
         cell: (contact) =>
           canWriteContacts ? (
@@ -152,16 +183,35 @@ export function ContactsPageClient() {
   return (
     <div className="grid gap-6">
       <PageHeader
-        primaryAction={canWriteContacts ? { icon: Plus, label: "New Contact", onClick: () => setFormOpen(true) } : undefined}
+        primaryAction={
+          canWriteContacts
+            ? {
+                icon: Plus,
+                label: "New Contact",
+                onClick: () => setFormOpen(true),
+              }
+            : undefined
+        }
         subtitle="Keep customer contacts, owners, and account links organized."
         title="Contacts"
       />
 
+      <SavedViews
+        scope="contacts"
+        value={filters}
+        onLoad={(saved) => {
+          setFilters(saved);
+          setPage(1);
+        }}
+      />
       <section className="rounded-xl bg-white p-4 shadow-sm">
         <div className="grid gap-3 lg:grid-cols-[minmax(240px,1.5fr)_minmax(160px,1fr)_minmax(160px,1fr)_minmax(140px,0.8fr)]">
           <div>
             <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]" aria-hidden="true" />
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]"
+                aria-hidden="true"
+              />
               <Input
                 className="pl-9"
                 onChange={(event) => updateFilter("search", event.target.value)}
@@ -173,7 +223,9 @@ export function ContactsPageClient() {
           <div>
             <select
               className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
-              onChange={(event) => updateFilter("account_id", event.target.value)}
+              onChange={(event) =>
+                updateFilter("account_id", event.target.value)
+              }
               value={filters.account_id}
             >
               <option value="">All accounts</option>
@@ -199,14 +251,27 @@ export function ContactsPageClient() {
             </select>
           </div>
           <div>
-            <Input onChange={(event) => updateFilter("tag", event.target.value)} placeholder="Tag name" value={filters.tag} />
+            <Input
+              onChange={(event) => updateFilter("tag", event.target.value)}
+              placeholder="Tag name"
+              value={filters.tag}
+            />
           </div>
         </div>
       </section>
 
-      {contacts.length === 0 && !contactsQuery.isLoading && !contactsQuery.isError ? (
+      <div className="flex flex-wrap gap-2">
+        <RecordOptionsStatus query={accountsQuery} label="accounts" />
+      </div>
+      {contacts.length === 0 &&
+      !contactsQuery.isLoading &&
+      !contactsQuery.isError ? (
         <EmptyState
-          action={canWriteContacts ? { label: "New Contact", onClick: () => setFormOpen(true) } : undefined}
+          action={
+            canWriteContacts
+              ? { label: "New Contact", onClick: () => setFormOpen(true) }
+              : undefined
+          }
           description="Create the first contact or adjust your filters."
           icon={Users}
           title="No contacts found"
@@ -218,6 +283,8 @@ export function ContactsPageClient() {
           emptyMessage="No contacts found."
           getRowKey={(contact) => contact.id}
           isLoading={contactsQuery.isLoading}
+          error={contactsQuery.isError}
+          onRetry={() => contactsQuery.refetch()}
           pagination={{
             hasNextPage: contacts.length === PAGE_SIZE,
             page,
@@ -228,10 +295,14 @@ export function ContactsPageClient() {
       )}
 
       {contactsQuery.isError ? (
-        <div className="rounded-xl border border-red-100 bg-white p-4 text-sm text-red-700 shadow-sm">Could not load contacts.</div>
+        <div className="rounded-xl border border-red-100 bg-white p-4 text-sm text-red-700 shadow-sm">
+          Could not load contacts.
+        </div>
       ) : null}
 
-      {canWriteContacts ? <ContactForm onOpenChange={setFormOpen} open={formOpen} /> : null}
+      {canWriteContacts ? (
+        <ContactForm onOpenChange={setFormOpen} open={formOpen} />
+      ) : null}
 
       {canWriteContacts ? (
         <ConfirmDialog

@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
+from fastapi import HTTPException, APIRouter, Depends, File, Query, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.auth.permissions import LEAD_WRITE_ROLES, SALES_REP, role_value
 from app.dependencies import get_current_user, get_db, require_role
@@ -23,7 +24,19 @@ from app.schemas.leads import (
 )
 from app.services import leads as leads_service
 
-router = APIRouter(prefix="/leads", tags=["Leads"])
+async def require_visible_record(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    lead_id: UUID | None = None,
+):
+    if lead_id is not None and role_value(current_user) == SALES_REP:
+        from app.models import Lead
+        result = await db.execute(select(Lead.id).where(Lead.id == lead_id, Lead.assigned_to == current_user.id))
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=404, detail="Lead not found")
+
+
+router = APIRouter(dependencies=[Depends(require_visible_record)], prefix="/leads", tags=["Leads"])
 
 
 @router.get("/", response_model=list[LeadResponse])
@@ -39,6 +52,7 @@ async def list_leads(
     max_score: Annotated[int | None, Query(ge=0, le=100)] = None,
     assigned_to: UUID | None = None,
     exclude_converted: bool = False,
+    search: str | None = None,
 ) -> list[LeadResponse]:
     if role_value(current_user) == SALES_REP:
         assigned_to = current_user.id
@@ -54,6 +68,7 @@ async def list_leads(
         max_score=max_score,
         assigned_to=assigned_to,
         exclude_converted=exclude_converted,
+        search=search,
     )
 
 
@@ -72,10 +87,16 @@ async def import_leads(
     db: Annotated[AsyncSession, Depends(get_db)],
     file: UploadFile = File(...),
 ) -> LeadImportSummary:
-    content = await file.read()
+    content = await file.read(5 * 1024 * 1024 + 1)
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="CSV must be 5 MB or smaller")
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=422, detail="CSV must use UTF-8 encoding")
     return await leads_service.import_leads_from_csv(
         db,
-        content.decode("utf-8-sig"),
+        text,
         current_user,
     )
 
@@ -87,7 +108,7 @@ async def list_duplicates(
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[DuplicateLeadPair]:
-    return await leads_service.list_duplicate_leads(db, page=page, page_size=page_size)
+    return await leads_service.list_duplicate_leads(db, page=page, page_size=page_size, assigned_to=current_user.id if role_value(current_user) == SALES_REP else None)
 
 
 @router.post("/merge", response_model=LeadResponse)
@@ -96,6 +117,8 @@ async def merge_leads(
     current_user: Annotated[User, Depends(require_role(*LEAD_WRITE_ROLES))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> LeadResponse:
+    await require_visible_record(current_user, db, merge_in.primary_lead_id)
+    await require_visible_record(current_user, db, merge_in.duplicate_lead_id)
     return await leads_service.merge_leads(db, merge_in)
 
 
@@ -135,6 +158,9 @@ async def convert_lead(
     current_user: Annotated[User, Depends(require_role(*LEAD_WRITE_ROLES))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> LeadConvertResponse:
+    if convert_in.account_id:
+        from app.services.accounts import get_account_model
+        await get_account_model(db, convert_in.account_id, current_user)
     return await leads_service.convert_lead(db, lead_id, convert_in)
 
 

@@ -1,4 +1,6 @@
 "use client";
+import { SavedViews } from "@/components/shared/SavedViews";
+import { useListState } from "@/hooks/useListState";
 
 import { useQuery } from "@tanstack/react-query";
 import { Building2, Plus, Search } from "lucide-react";
@@ -33,12 +35,21 @@ function formatTier(tier: string): string {
 function TierPill({ tier }: { tier: string }) {
   const tone =
     tier === "enterprise"
-      ? "bg-[#0F2444]/10 text-[#0F2444] ring-[#0F2444]/10"
+      ? "bg-[var(--navy)]/10 text-[var(--navy)] ring-[var(--navy)]/10"
       : tier === "startup"
         ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
-        : "bg-blue-50 text-[#2563EB] ring-blue-100";
+        : "bg-blue-50 text-[var(--primary)] ring-blue-100";
 
-  return <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset", tone)}>{formatTier(tier)}</span>;
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset",
+        tone,
+      )}
+    >
+      {formatTier(tier)}
+    </span>
+  );
 }
 
 function toQueryParams(page: number, filters: AccountFilters) {
@@ -53,16 +64,20 @@ function toQueryParams(page: number, filters: AccountFilters) {
 
 export function AccountsPageClient() {
   const { canWriteAccounts } = usePermissions();
-  const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<AccountFilters>({ owner_id: "", search: "", tier: "" });
+  const { filters, setFilters, page, setPage } = useListState<AccountFilters>({
+    owner_id: "",
+    search: "",
+    tier: "",
+  });
   const [formOpen, setFormOpen] = useState(false);
 
   const accountsQuery = useQuery({
-    queryFn: () => api.get<Account[]>("/accounts/", toQueryParams(page, filters)),
+    queryFn: () =>
+      api.get<Account[]>("/accounts/", toQueryParams(page, filters)),
     queryKey: ["accounts", "list", page, filters],
   });
   const usersQuery = useQuery({
-    queryFn: () => api.get<User[]>("/users/"),
+    queryFn: () => api.get<User[]>("/users/directory"),
     queryKey: ["users", "filter-options"],
     retry: false,
   });
@@ -72,7 +87,10 @@ export function AccountsPageClient() {
     () => [
       {
         cell: (account) => (
-          <Link className="font-semibold text-[#0F2444] hover:text-[#2563EB]" href={`/accounts/${account.id}`}>
+          <Link
+            className="font-semibold text-[var(--navy)] hover:text-[var(--primary)]"
+            href={`/accounts/${account.id}`}
+          >
             {account.name}
           </Link>
         ),
@@ -81,14 +99,26 @@ export function AccountsPageClient() {
       },
       { accessor: "industry", header: "Industry", id: "industry" },
       { accessor: "size", header: "Size", id: "size" },
-      { cell: (account) => <TierPill tier={account.tier} />, header: "Tier", id: "tier" },
       {
-        cell: (account) => account.linked_contact_count ?? account.contact_count ?? 0,
+        cell: (account) => <TierPill tier={account.tier} />,
+        header: "Tier",
+        id: "tier",
+      },
+      {
+        cell: (account) =>
+          account.linked_contact_count ?? account.contact_count ?? 0,
         header: "Contact Count",
         id: "contact_count",
       },
       {
-        cell: (account) => formatCurrency(Number(account.total_deal_value ?? 0)),
+        cell: (account) =>
+          Object.entries(
+            account.deal_values_by_currency ?? {
+              USD: account.total_deal_value ?? 0,
+            },
+          )
+            .map(([currency, value]) => formatCurrency(Number(value), currency))
+            .join(" · ") || "No deals",
         header: "Deal Value",
         id: "deal_value",
       },
@@ -109,15 +139,34 @@ export function AccountsPageClient() {
   return (
     <div className="grid gap-6">
       <PageHeader
-        primaryAction={canWriteAccounts ? { icon: Plus, label: "New Account", onClick: () => setFormOpen(true) } : undefined}
+        primaryAction={
+          canWriteAccounts
+            ? {
+                icon: Plus,
+                label: "New Account",
+                onClick: () => setFormOpen(true),
+              }
+            : undefined
+        }
         subtitle="Review customer companies, ownership, contacts, and pipeline value."
         title="Accounts"
       />
 
+      <SavedViews
+        scope="accounts"
+        value={filters}
+        onLoad={(saved) => {
+          setFilters(saved);
+          setPage(1);
+        }}
+      />
       <section className="rounded-xl bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-[minmax(240px,1.4fr)_minmax(160px,1fr)_minmax(160px,1fr)]">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]" aria-hidden="true" />
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]"
+              aria-hidden="true"
+            />
             <Input
               className="pl-9"
               onChange={(event) => updateFilter("search", event.target.value)}
@@ -131,11 +180,13 @@ export function AccountsPageClient() {
             value={filters.tier}
           >
             <option value="">All tiers</option>
-            {(["enterprise", "smb", "startup"] satisfies AccountTier[]).map((tier) => (
-              <option key={tier} value={tier}>
-                {formatTier(tier)}
-              </option>
-            ))}
+            {(["enterprise", "smb", "startup"] satisfies AccountTier[]).map(
+              (tier) => (
+                <option key={tier} value={tier}>
+                  {formatTier(tier)}
+                </option>
+              ),
+            )}
           </select>
           <select
             className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
@@ -152,9 +203,15 @@ export function AccountsPageClient() {
         </div>
       </section>
 
-      {accounts.length === 0 && !accountsQuery.isLoading && !accountsQuery.isError ? (
+      {accounts.length === 0 &&
+      !accountsQuery.isLoading &&
+      !accountsQuery.isError ? (
         <EmptyState
-          action={canWriteAccounts ? { label: "New Account", onClick: () => setFormOpen(true) } : undefined}
+          action={
+            canWriteAccounts
+              ? { label: "New Account", onClick: () => setFormOpen(true) }
+              : undefined
+          }
           description="Create the first company account or adjust your filters."
           icon={Building2}
           title="No accounts found"
@@ -166,6 +223,8 @@ export function AccountsPageClient() {
           emptyMessage="No accounts found."
           getRowKey={(account) => account.id}
           isLoading={accountsQuery.isLoading}
+          error={accountsQuery.isError}
+          onRetry={() => accountsQuery.refetch()}
           pagination={{
             hasNextPage: accounts.length === PAGE_SIZE,
             page,
@@ -176,10 +235,14 @@ export function AccountsPageClient() {
       )}
 
       {accountsQuery.isError ? (
-        <div className="rounded-xl border border-red-100 bg-white p-4 text-sm text-red-700 shadow-sm">Could not load accounts.</div>
+        <div className="rounded-xl border border-red-100 bg-white p-4 text-sm text-red-700 shadow-sm">
+          Could not load accounts.
+        </div>
       ) : null}
 
-      {canWriteAccounts ? <AccountForm onOpenChange={setFormOpen} open={formOpen} /> : null}
+      {canWriteAccounts ? (
+        <AccountForm onOpenChange={setFormOpen} open={formOpen} />
+      ) : null}
     </div>
   );
 }

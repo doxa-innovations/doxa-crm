@@ -1,4 +1,9 @@
 "use client";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
+import {
+  useRecordOptions,
+  RecordOptionsStatus,
+} from "@/hooks/useRecordOptions";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,9 +15,25 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { api } from "@/lib/api";
-import type { Account, Contact, Deal, DealCreate, DealUpdate, Pipeline, User } from "@/types/api";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { api, apiErrorDetail } from "@/lib/api";
+import type {
+  Account,
+  Contact,
+  Deal,
+  DealCreate,
+  DealUpdate,
+  Pipeline,
+  User,
+} from "@/types/api";
 
 const dealTypes = ["new_business", "renewal", "upsell"] as const;
 
@@ -71,7 +92,10 @@ function emptyValues(selectedPipelineId?: string): DealFormValues {
   };
 }
 
-function valuesFromDeal(deal?: Deal | null, selectedPipelineId?: string): DealFormValues {
+function valuesFromDeal(
+  deal?: Deal | null,
+  selectedPipelineId?: string,
+): DealFormValues {
   if (!deal) {
     return emptyValues(selectedPipelineId);
   }
@@ -85,13 +109,23 @@ function valuesFromDeal(deal?: Deal | null, selectedPipelineId?: string): DealFo
     pipeline_id: deal.pipeline_id,
     stage_id: deal.stage_id,
     title: deal.title,
-    type: dealTypes.includes(deal.type as (typeof dealTypes)[number]) ? (deal.type as (typeof dealTypes)[number]) : "new_business",
+    type: dealTypes.includes(deal.type as (typeof dealTypes)[number])
+      ? (deal.type as (typeof dealTypes)[number])
+      : "new_business",
     value: String(deal.value),
   };
 }
 
-function fieldError(message?: string) {
-  return message ? <p className="mt-1 text-xs text-red-600">{message}</p> : null;
+function fieldError(message?: string, field?: string) {
+  return message ? (
+    <p
+      id={field ? `${field}-error` : undefined}
+      role="alert"
+      className="mt-1 text-xs text-red-600"
+    >
+      {message}
+    </p>
+  ) : null;
 }
 
 function optionLabel(value: string): string {
@@ -116,7 +150,13 @@ function buildPayload(values: DealFormValues): DealCreate | DealUpdate {
   };
 }
 
-export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId }: DealFormProps) {
+export function DealForm({
+  deal,
+  onOpenChange,
+  onSaved,
+  open,
+  selectedPipelineId,
+}: DealFormProps) {
   const queryClient = useQueryClient();
   const [contactSearch, setContactSearch] = useState(deal?.contact_name ?? "");
   const [accountSearch, setAccountSearch] = useState(deal?.account_name ?? "");
@@ -126,28 +166,38 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
     defaultValues: valuesFromDeal(deal, selectedPipelineId),
     resolver: zodResolver(dealFormSchema),
   });
+  const confirmDiscard = useUnsavedChanges(open && form.formState.isDirty);
+  const handleOpenChange = (next: boolean) => {
+    if (next || confirmDiscard()) onOpenChange(next);
+  };
+
   const selectedPipeline = form.watch("pipeline_id");
 
   const pipelinesQuery = useQuery({
     queryFn: () => api.get<Pipeline[]>("/pipelines/"),
     queryKey: ["pipelines", "deal-form"],
   });
-  const contactsQuery = useQuery({
-    queryFn: () => api.get<Contact[]>("/contacts/", { page_size: 50, search: debouncedContactSearch || undefined }),
-    queryKey: ["contacts", "deal-form", debouncedContactSearch],
-  });
-  const accountsQuery = useQuery({
-    queryFn: () => api.get<Account[]>("/accounts/", { page_size: 100, search: debouncedAccountSearch || undefined }),
-    queryKey: ["accounts", "deal-form", debouncedAccountSearch],
-  });
+  const contactsQuery = useRecordOptions<Contact>(
+    "/contacts/",
+    { page_size: 50, search: debouncedContactSearch || undefined },
+    ["contacts", "deal-form", debouncedContactSearch],
+  );
+  const accountsQuery = useRecordOptions<Account>(
+    "/accounts/",
+    { page_size: 100, search: debouncedAccountSearch || undefined },
+    ["accounts", "deal-form", debouncedAccountSearch],
+  );
   const usersQuery = useQuery({
-    queryFn: () => api.get<User[]>("/users/"),
+    queryFn: () => api.get<User[]>("/users/directory"),
     queryKey: ["users", "deal-form"],
     retry: false,
   });
 
   const pipelines = pipelinesQuery.data ?? [];
-  const activePipeline = pipelines.find((pipeline) => pipeline.id === selectedPipeline) ?? pipelines.find((pipeline) => pipeline.is_default) ?? pipelines[0];
+  const activePipeline =
+    pipelines.find((pipeline) => pipeline.id === selectedPipeline) ??
+    pipelines.find((pipeline) => pipeline.is_default) ??
+    pipelines[0];
   const stages = activePipeline?.stages ?? [];
 
   useEffect(() => {
@@ -166,7 +216,10 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
 
   useEffect(() => {
     const currentStage = form.getValues("stage_id");
-    if (stages.length > 0 && (!currentStage || !stages.some((stage) => stage.id === currentStage))) {
+    if (
+      stages.length > 0 &&
+      (!currentStage || !stages.some((stage) => stage.id === currentStage))
+    ) {
       form.setValue("stage_id", stages[0].id, { shouldDirty: true });
     }
   }, [form, stages]);
@@ -179,7 +232,9 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
     }
 
     return options.filter((contact) =>
-      `${contact.first_name} ${contact.last_name} ${contact.email}`.toLowerCase().includes(normalizedSearch),
+      `${contact.first_name} ${contact.last_name} ${contact.email}`
+        .toLowerCase()
+        .includes(normalizedSearch),
     );
   }, [contactsQuery.data, debouncedContactSearch]);
   const accountOptions = useMemo(() => {
@@ -189,19 +244,25 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
       return options;
     }
 
-    return options.filter((account) => account.name.toLowerCase().includes(normalizedSearch));
+    return options.filter((account) =>
+      account.name.toLowerCase().includes(normalizedSearch),
+    );
   }, [accountsQuery.data, debouncedAccountSearch]);
 
   const saveDeal = useMutation({
     mutationFn: (values: DealFormValues) => {
       const payload = buildPayload(values);
       if (deal) {
-        return api.patch<Deal, DealUpdate>(`/deals/${deal.id}`, payload as DealUpdate);
+        return api.patch<Deal, DealUpdate>(
+          `/deals/${deal.id}`,
+          payload as DealUpdate,
+        );
       }
 
       return api.post<Deal, DealCreate>("/deals/", payload as DealCreate);
     },
     onSuccess: (savedDeal) => {
+      form.reset(form.getValues());
       void queryClient.invalidateQueries({ queryKey: ["deals"] });
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       onSaved?.(savedDeal);
@@ -212,18 +273,33 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
   const submitting = saveDeal.isPending;
 
   return (
-    <Sheet onOpenChange={onOpenChange} open={open}>
+    <Sheet onOpenChange={handleOpenChange} open={open}>
       <SheetContent>
         <SheetHeader>
           <SheetTitle>{deal ? "Edit Deal" : "New Deal"}</SheetTitle>
-          <SheetDescription>{deal ? "Update deal details and stage." : "Create a pipeline opportunity."}</SheetDescription>
+          <SheetDescription>
+            {deal
+              ? "Update deal details and stage."
+              : "Create a pipeline opportunity."}
+          </SheetDescription>
         </SheetHeader>
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={form.handleSubmit((values) => saveDeal.mutate(values))}>
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={form.handleSubmit((values) => saveDeal.mutate(values))}
+        >
           <SheetBody className="space-y-5">
             <div>
               <Label htmlFor="deal_title">Title</Label>
-              <Input id="deal_title" disabled={submitting} {...form.register("title")} />
-              {fieldError(form.formState.errors.title?.message)}
+              <Input
+                id="deal_title"
+                disabled={submitting}
+                aria-invalid={Boolean(form.formState.errors.title)}
+                aria-describedby={
+                  form.formState.errors.title ? "title-error" : undefined
+                }
+                {...form.register("title")}
+              />
+              {fieldError(form.formState.errors.title?.message, "title")}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
@@ -233,6 +309,10 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
                   className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
                   disabled={submitting}
                   id="deal_type"
+                  aria-invalid={Boolean(form.formState.errors.type)}
+                  aria-describedby={
+                    form.formState.errors.type ? "type-error" : undefined
+                  }
                   {...form.register("type")}
                 >
                   {dealTypes.map((type) => (
@@ -244,13 +324,38 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
               </div>
               <div>
                 <Label htmlFor="deal_value">Value</Label>
-                <Input id="deal_value" disabled={submitting} min="0" step="100" type="number" {...form.register("value")} />
-                {fieldError(form.formState.errors.value?.message)}
+                <Input
+                  id="deal_value"
+                  disabled={submitting}
+                  min="0"
+                  step="100"
+                  type="number"
+                  aria-invalid={Boolean(form.formState.errors.value)}
+                  aria-describedby={
+                    form.formState.errors.value ? "value-error" : undefined
+                  }
+                  {...form.register("value")}
+                />
+                {fieldError(form.formState.errors.value?.message, "value")}
               </div>
               <div>
                 <Label htmlFor="deal_currency">Currency</Label>
-                <Input id="deal_currency" disabled={submitting} maxLength={3} {...form.register("currency")} />
-                {fieldError(form.formState.errors.currency?.message)}
+                <Input
+                  id="deal_currency"
+                  disabled={submitting}
+                  maxLength={3}
+                  aria-invalid={Boolean(form.formState.errors.currency)}
+                  aria-describedby={
+                    form.formState.errors.currency
+                      ? "currency-error"
+                      : undefined
+                  }
+                  {...form.register("currency")}
+                />
+                {fieldError(
+                  form.formState.errors.currency?.message,
+                  "currency",
+                )}
               </div>
             </div>
 
@@ -261,6 +366,12 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
                   className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
                   disabled={submitting}
                   id="deal_pipeline"
+                  aria-invalid={Boolean(form.formState.errors.pipeline_id)}
+                  aria-describedby={
+                    form.formState.errors.pipeline_id
+                      ? "pipeline_id-error"
+                      : undefined
+                  }
                   {...form.register("pipeline_id")}
                 >
                   {pipelines.map((pipeline) => (
@@ -269,7 +380,10 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
                     </option>
                   ))}
                 </select>
-                {fieldError(form.formState.errors.pipeline_id?.message)}
+                {fieldError(
+                  form.formState.errors.pipeline_id?.message,
+                  "pipeline_id",
+                )}
               </div>
               <div>
                 <Label htmlFor="deal_stage">Stage</Label>
@@ -277,6 +391,12 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
                   className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
                   disabled={submitting}
                   id="deal_stage"
+                  aria-invalid={Boolean(form.formState.errors.stage_id)}
+                  aria-describedby={
+                    form.formState.errors.stage_id
+                      ? "stage_id-error"
+                      : undefined
+                  }
                   {...form.register("stage_id")}
                 >
                   {stages.map((stage) => (
@@ -285,7 +405,10 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
                     </option>
                   ))}
                 </select>
-                {fieldError(form.formState.errors.stage_id?.message)}
+                {fieldError(
+                  form.formState.errors.stage_id?.message,
+                  "stage_id",
+                )}
               </div>
             </div>
 
@@ -296,9 +419,18 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
                 id="expected_close"
                 disabled={submitting}
                 type="date"
+                aria-invalid={Boolean(form.formState.errors.expected_close)}
+                aria-describedby={
+                  form.formState.errors.expected_close
+                    ? "expected_close-error"
+                    : undefined
+                }
                 {...form.register("expected_close")}
               />
-              {fieldError(form.formState.errors.expected_close?.message)}
+              {fieldError(
+                form.formState.errors.expected_close?.message,
+                "expected_close",
+              )}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -308,12 +440,20 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
                   id="contact_search"
                   disabled={submitting}
                   onChange={(event) => setContactSearch(event.target.value)}
+                  aria-label="Search contacts"
                   placeholder="Search contacts"
                   value={contactSearch}
                 />
                 <select
                   className="mt-2 h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
                   disabled={submitting}
+                  aria-invalid={Boolean(form.formState.errors.contact_id)}
+                  aria-describedby={
+                    form.formState.errors.contact_id
+                      ? "contact_id-error"
+                      : undefined
+                  }
+                  aria-label="Contact"
                   {...form.register("contact_id")}
                 >
                   <option value="">Choose contact</option>
@@ -323,7 +463,10 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
                     </option>
                   ))}
                 </select>
-                {fieldError(form.formState.errors.contact_id?.message)}
+                {fieldError(
+                  form.formState.errors.contact_id?.message,
+                  "contact_id",
+                )}
               </div>
               <div>
                 <Label htmlFor="account_search">Account</Label>
@@ -331,12 +474,20 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
                   id="account_search"
                   disabled={submitting}
                   onChange={(event) => setAccountSearch(event.target.value)}
+                  aria-label="Search accounts"
                   placeholder="Search accounts"
                   value={accountSearch}
                 />
                 <select
                   className="mt-2 h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
                   disabled={submitting}
+                  aria-invalid={Boolean(form.formState.errors.account_id)}
+                  aria-describedby={
+                    form.formState.errors.account_id
+                      ? "account_id-error"
+                      : undefined
+                  }
+                  aria-label="Account"
                   {...form.register("account_id")}
                 >
                   <option value="">Choose account</option>
@@ -346,7 +497,10 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
                     </option>
                   ))}
                 </select>
-                {fieldError(form.formState.errors.account_id?.message)}
+                {fieldError(
+                  form.formState.errors.account_id?.message,
+                  "account_id",
+                )}
               </div>
             </div>
 
@@ -356,6 +510,10 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
                 className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
                 disabled={submitting}
                 id="deal_owner"
+                aria-invalid={Boolean(form.formState.errors.owner_id)}
+                aria-describedby={
+                  form.formState.errors.owner_id ? "owner_id-error" : undefined
+                }
                 {...form.register("owner_id")}
               >
                 <option value="">Current user</option>
@@ -369,13 +527,30 @@ export function DealForm({ deal, onOpenChange, onSaved, open, selectedPipelineId
               </select>
             </div>
 
-            {saveDeal.isError ? <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">Could not save deal.</div> : null}
+            {saveDeal.isError ? (
+              <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+                {apiErrorDetail(saveDeal.error, "Could not save deal.")}
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <RecordOptionsStatus query={contactsQuery} label="contacts" />
+              <RecordOptionsStatus query={accountsQuery} label="accounts" />
+            </div>
           </SheetBody>
           <SheetFooter>
-            <Button disabled={submitting} onClick={() => onOpenChange(false)} type="button" variant="outline">
+            <Button
+              disabled={submitting}
+              onClick={() => handleOpenChange(false)}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
-            <Button className="bg-[#2563EB] hover:bg-blue-700" disabled={submitting} type="submit">
+            <Button
+              className="bg-[var(--primary)] hover:bg-blue-700"
+              disabled={submitting}
+              type="submit"
+            >
               <Save className="h-4 w-4" aria-hidden="true" />
               Save Deal
             </Button>

@@ -1,6 +1,15 @@
 "use client";
+import {
+  useRecordOptions,
+  RecordOptionsStatus,
+} from "@/hooks/useRecordOptions";
 
-import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
+import {
+  DragDropContext,
+  Draggable,
+  Droppable,
+  type DropResult,
+} from "@hello-pangea/dnd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle,
@@ -25,7 +34,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import { CampaignForm } from "@/components/campaigns/CampaignForm";
 import { ContactSelectModal } from "@/components/campaigns/ContactSelectModal";
@@ -56,7 +74,10 @@ interface CampaignDetailClientProps {
   campaignId: string;
 }
 
-const metricEvents: Array<{ eventType: CampaignMetricEventType; label: string }> = [
+const metricEvents: Array<{
+  eventType: CampaignMetricEventType;
+  label: string;
+}> = [
   { eventType: "sent", label: "Sent" },
   { eventType: "opened", label: "Opened" },
   { eventType: "clicked", label: "Clicked" },
@@ -107,7 +128,9 @@ function optionLabel(value: string): string {
 }
 
 function rate(numerator: number, denominator: number): number {
-  return denominator > 0 ? Math.round((numerator / denominator) * 1000) / 10 : 0;
+  return denominator > 0
+    ? Math.round((numerator / denominator) * 1000) / 10
+    : 0;
 }
 
 function preview(body?: string | null): string {
@@ -119,10 +142,21 @@ function preview(body?: string | null): string {
 }
 
 function metricChartData(metrics?: CampaignMetrics) {
-  const current = metrics ?? { clicked: 0, converted: 0, opened: 0, replied: 0, sent: 0 };
+  const current = metrics ?? {
+    clicked: 0,
+    converted: 0,
+    opened: 0,
+    replied: 0,
+    sent: 0,
+  };
   return [
     { clicked: 0, label: "Start", opened: 0, sent: 0 },
-    { clicked: current.clicked, label: "Current", opened: current.opened, sent: current.sent },
+    {
+      clicked: current.clicked,
+      label: "Current",
+      opened: current.opened,
+      sent: current.sent,
+    },
   ];
 }
 
@@ -137,17 +171,24 @@ function variantRows(steps: CampaignSequenceStep[]) {
     row.subjects.push(step.subject);
     variants.set(step.variant, row);
   });
-  return Array.from(variants.entries()).map(([variant, data]) => ({ variant, ...data }));
+  return Array.from(variants.entries()).map(([variant, data]) => ({
+    variant,
+    ...data,
+  }));
 }
 
-export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) {
+export function CampaignDetailClient({
+  campaignId,
+}: CampaignDetailClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { canWriteCampaigns } = usePermissions();
   const [tab, setTab] = useState<CampaignTab>("overview");
   const [campaignFormOpen, setCampaignFormOpen] = useState(false);
   const [stepFormOpen, setStepFormOpen] = useState(false);
-  const [editingStep, setEditingStep] = useState<CampaignSequenceStep | null>(null);
+  const [editingStep, setEditingStep] = useState<CampaignSequenceStep | null>(
+    null,
+  );
   const [contactSelectOpen, setContactSelectOpen] = useState(false);
   const [deleteCampaignOpen, setDeleteCampaignOpen] = useState(false);
   const [restartCampaignOpen, setRestartCampaignOpen] = useState(false);
@@ -160,14 +201,31 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
     refetchOnMount: "always",
   });
   const campaign = campaignQuery.data;
+  const [deliveryPage, setDeliveryPage] = useState(1);
+  const delivery = useQuery({
+    queryKey: ["campaigns", campaignId, "delivery", deliveryPage],
+    queryFn: () =>
+      api.get<
+        Array<{
+          id: string;
+          status: string;
+          created_at: string;
+          error: string | null;
+          result: Record<string, unknown>;
+        }>
+      >(`/campaigns/${campaignId}/delivery-history`, { page: deliveryPage }),
+    refetchInterval: campaign?.status === "active" ? 10000 : false,
+  });
   const stepsQuery = useQuery({
-    queryFn: () => api.get<CampaignSequenceStep[]>(`/campaigns/${campaignId}/steps`),
+    queryFn: () =>
+      api.get<CampaignSequenceStep[]>(`/campaigns/${campaignId}/steps`),
     queryKey: ["campaigns", "steps", campaignId],
   });
-  const enrollmentsQuery = useQuery({
-    queryFn: () => api.get<CampaignEnrollment[]>(`/campaigns/${campaignId}/enrollments`, { page_size: 100 }),
-    queryKey: ["campaigns", "enrollments", campaignId],
-  });
+  const enrollmentsQuery = useRecordOptions<CampaignEnrollment>(
+    `/campaigns/${campaignId}/enrollments`,
+    {},
+    ["campaigns", "enrollments", campaignId],
+  );
   const metricsQuery = useQuery({
     queryFn: () => api.get<CampaignMetrics>(`/campaigns/${campaignId}/metrics`),
     queryKey: ["campaigns", "metrics", campaignId],
@@ -179,16 +237,24 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
     mutationFn: () => api.post<Campaign>(`/campaigns/${campaignId}/activate`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", campaignId] });
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "metrics", campaignId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "detail", campaignId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "metrics", campaignId],
+      });
     },
   });
   const pauseCampaign = useMutation({
     mutationFn: () => api.post<Campaign>(`/campaigns/${campaignId}/pause`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", campaignId] });
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "metrics", campaignId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "detail", campaignId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "metrics", campaignId],
+      });
     },
   });
   const restartCampaign = useMutation({
@@ -196,17 +262,30 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
     onSuccess: () => {
       setRestartCampaignOpen(false);
       void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", campaignId] });
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "enrollments", campaignId] });
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "metrics", campaignId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "detail", campaignId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "enrollments", campaignId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "metrics", campaignId],
+      });
     },
   });
   const completeCampaign = useMutation({
-    mutationFn: () => api.patch<Campaign, CampaignUpdate>(`/campaigns/${campaignId}`, { status: "completed" }),
+    mutationFn: () =>
+      api.patch<Campaign, CampaignUpdate>(`/campaigns/${campaignId}`, {
+        status: "completed",
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", campaignId] });
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "metrics", campaignId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "detail", campaignId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "metrics", campaignId],
+      });
     },
   });
   const deleteCampaign = useMutation({
@@ -218,58 +297,115 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
   });
   const reorderSteps = useMutation({
     mutationFn: (stepIds: string[]) =>
-      api.post<CampaignSequenceStep[], CampaignStepsReorderRequest>(`/campaigns/${campaignId}/steps/reorder`, {
-        step_ids: stepIds,
-      }),
+      api.post<CampaignSequenceStep[], CampaignStepsReorderRequest>(
+        `/campaigns/${campaignId}/steps/reorder`,
+        {
+          step_ids: stepIds,
+        },
+      ),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "steps", campaignId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "steps", campaignId],
+      });
     },
   });
   const deleteStep = useMutation({
-    mutationFn: (stepId: string) => api.delete<void>(`/campaigns/${campaignId}/steps/${stepId}`),
+    mutationFn: (stepId: string) =>
+      api.delete<void>(`/campaigns/${campaignId}/steps/${stepId}`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "steps", campaignId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "steps", campaignId],
+      });
     },
   });
   const unenrollContact = useMutation({
-    mutationFn: (contactId: string) => api.delete<CampaignEnrollment>(`/campaigns/${campaignId}/enrollments/${contactId}`),
+    mutationFn: (contactId: string) =>
+      api.delete<CampaignEnrollment>(
+        `/campaigns/${campaignId}/enrollments/${contactId}`,
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", campaignId] });
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "enrollments", campaignId] });
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "metrics", campaignId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "detail", campaignId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "enrollments", campaignId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "metrics", campaignId],
+      });
     },
   });
 
   const steps = stepsQuery.data ?? [];
   const enrollments = enrollmentsQuery.data ?? [];
   const metrics = metricsQuery.data ?? campaign?.metrics;
-  const hasMetrics = Boolean(metrics && Object.values(metrics).some((value) => value > 0));
+  const hasMetrics = Boolean(
+    metrics && Object.values(metrics).some((value) => value > 0),
+  );
   const hasSteps = steps.length > 0;
-  const hasActiveEnrollments = enrollments.some((enrollment) => enrollment.status === "active");
-  const hasRestartableEnrollments = enrollments.some((enrollment) => enrollment.status !== "unsubscribed");
-  const canActivate = hasSteps && hasActiveEnrollments && campaign?.status !== "active" && campaign?.status !== "completed";
-  const canRestart = Boolean(campaign && campaign.status !== "draft" && hasSteps && hasRestartableEnrollments);
-  const disabledActivationReason = !hasSteps ? "Add at least one sequence step before activating." : !hasActiveEnrollments ? "Enroll active contacts before activating." : "";
-  const disabledRestartReason = !hasSteps ? "Add at least one sequence step before restarting." : !hasRestartableEnrollments ? "Enroll contacts before restarting." : "";
-  const sortedSteps = [...steps].sort((left, right) => left.step_index - right.step_index);
+  const hasActiveEnrollments = enrollments.some(
+    (enrollment) => enrollment.status === "active",
+  );
+  const hasRestartableEnrollments = enrollments.some(
+    (enrollment) => enrollment.status !== "unsubscribed",
+  );
+  const canActivate =
+    hasSteps &&
+    hasActiveEnrollments &&
+    campaign?.status !== "active" &&
+    campaign?.status !== "completed";
+  const canRestart = Boolean(
+    campaign &&
+    campaign.status !== "draft" &&
+    hasSteps &&
+    hasRestartableEnrollments,
+  );
+  const disabledActivationReason = !hasSteps
+    ? "Add at least one sequence step before activating."
+    : !hasActiveEnrollments
+      ? "Enroll active contacts before activating."
+      : "";
+  const disabledRestartReason = !hasSteps
+    ? "Add at least one sequence step before restarting."
+    : !hasRestartableEnrollments
+      ? "Enroll contacts before restarting."
+      : "";
+  const sortedSteps = [...steps].sort(
+    (left, right) => left.step_index - right.step_index,
+  );
   const variantComparison = useMemo(() => variantRows(steps), [steps]);
-  const metricContactOptions = enrollments.filter((enrollment) => enrollment.status !== "unsubscribed");
-  const metricContactIds = new Set(metricContactOptions.map((enrollment) => enrollment.contact_id));
-  const activeMetricContactId = metricContactIds.has(metricContactId) ? metricContactId : metricContactOptions[0]?.contact_id ?? "";
+  const metricContactOptions = enrollments.filter(
+    (enrollment) => enrollment.status !== "unsubscribed",
+  );
+  const metricContactIds = new Set(
+    metricContactOptions.map((enrollment) => enrollment.contact_id),
+  );
+  const activeMetricContactId = metricContactIds.has(metricContactId)
+    ? metricContactId
+    : (metricContactOptions[0]?.contact_id ?? "");
   const metricStepIds = new Set(sortedSteps.map((step) => step.id));
-  const activeMetricStepId = metricStepIds.has(metricStepId) ? metricStepId : "";
+  const activeMetricStepId = metricStepIds.has(metricStepId)
+    ? metricStepId
+    : "";
   const recordMetric = useMutation({
     mutationFn: (eventType: CampaignMetricEventType) =>
-      api.post<CampaignMetric, CampaignMetricCreate>(`/campaigns/${campaignId}/metrics`, {
-        contact_id: activeMetricContactId,
-        event_type: eventType,
-        step_id: activeMetricStepId || null,
-      }),
+      api.post<CampaignMetric, CampaignMetricCreate>(
+        `/campaigns/${campaignId}/metrics`,
+        {
+          contact_id: activeMetricContactId,
+          event_type: eventType,
+          step_id: activeMetricStepId || null,
+        },
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "detail", campaignId] });
-      void queryClient.invalidateQueries({ queryKey: ["campaigns", "metrics", campaignId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "detail", campaignId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["campaigns", "metrics", campaignId],
+      });
     },
   });
 
@@ -278,7 +414,10 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
       return;
     }
 
-    if (!result.destination || result.destination.index === result.source.index) {
+    if (
+      !result.destination ||
+      result.destination.index === result.source.index
+    ) {
       return;
     }
 
@@ -294,6 +433,7 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
   if (campaignQuery.isLoading) {
     return (
       <div className="grid gap-6">
+        <RecordOptionsStatus query={enrollmentsQuery} label="enrollments" />
         <Skeleton className="h-32 rounded-xl" />
         <Skeleton className="h-96 rounded-xl" />
       </div>
@@ -301,7 +441,11 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
   }
 
   if (campaignQuery.isError || !campaign) {
-    return <div className="rounded-xl border border-red-100 bg-white p-5 text-sm text-red-700 shadow-sm">Could not load campaign.</div>;
+    return (
+      <div className="rounded-xl border border-red-100 bg-white p-5 text-sm text-red-700 shadow-sm">
+        Could not load campaign.
+      </div>
+    );
   }
 
   const tabs: Array<{ label: string; value: CampaignTab }> = [
@@ -317,19 +461,30 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-2xl font-semibold tracking-normal text-[#0F2444]">{campaign.name}</h1>
+              <h1 className="text-2xl font-semibold tracking-normal text-[var(--navy)]">
+                {campaign.name}
+              </h1>
               <StatusPill status={campaign.status} type="campaign" />
-              <span className="rounded-full bg-[#EFF6FF] px-2.5 py-1 text-xs font-medium text-[#2563EB]">{optionLabel(campaign.type)}</span>
+              <span className="rounded-full bg-[var(--background)] px-2.5 py-1 text-xs font-medium text-[var(--primary)]">
+                {optionLabel(campaign.type)}
+              </span>
             </div>
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-[#64748B]">
-              <span>{formatDate(campaign.start_date)} - {formatDate(campaign.end_date)}</span>
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-[var(--muted-foreground)]">
+              <span>
+                {formatDate(campaign.start_date)} -{" "}
+                {formatDate(campaign.end_date)}
+              </span>
               <span>{campaign.owner_name ?? "Unassigned owner"}</span>
               <span>{campaign.enrollment_count} enrolled</span>
             </div>
           </div>
           {canWriteCampaigns ? (
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => setCampaignFormOpen(true)} type="button" variant="outline">
+              <Button
+                onClick={() => setCampaignFormOpen(true)}
+                type="button"
+                variant="outline"
+              >
                 Edit Campaign
               </Button>
               {campaign.status === "draft" ? (
@@ -352,7 +507,12 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
         <div className="flex flex-wrap gap-1">
           {tabs.map((item) => (
             <button
-              className={cn("rounded-md px-4 py-2 text-sm font-semibold transition-colors", tab === item.value ? "bg-slate-100 text-[#0F2444]" : "text-[#64748B] hover:bg-slate-50 hover:text-[#0F2444]")}
+              className={cn(
+                "rounded-md px-4 py-2 text-sm font-semibold transition-colors",
+                tab === item.value
+                  ? "bg-slate-100 text-[var(--navy)]"
+                  : "text-[var(--muted-foreground)] hover:bg-slate-50 hover:text-[var(--navy)]",
+              )}
               key={item.value}
               onClick={() => setTab(item.value)}
               type="button"
@@ -366,103 +526,176 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
       {tab === "overview" ? (
         <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
           <section className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-[#0F2444]">Campaign Info</h2>
+            <h2 className="text-base font-semibold text-[var(--navy)]">
+              Campaign Info
+            </h2>
             <dl className="mt-4 grid gap-3 text-sm">
               <div>
-                <dt className="text-[#64748B]">Type</dt>
-                <dd className="font-semibold text-[#0F2444]">{optionLabel(campaign.type)}</dd>
+                <dt className="text-[var(--muted-foreground)]">Type</dt>
+                <dd className="font-semibold text-[var(--navy)]">
+                  {optionLabel(campaign.type)}
+                </dd>
               </div>
               <div>
-                <dt className="text-[#64748B]">Status</dt>
-                <dd className="mt-1"><StatusPill status={campaign.status} type="campaign" /></dd>
+                <dt className="text-[var(--muted-foreground)]">Status</dt>
+                <dd className="mt-1">
+                  <StatusPill status={campaign.status} type="campaign" />
+                </dd>
               </div>
               <div>
-                <dt className="text-[#64748B]">Dates</dt>
-                <dd className="font-semibold text-[#0F2444]">{formatDate(campaign.start_date)} - {formatDate(campaign.end_date)}</dd>
+                <dt className="text-[var(--muted-foreground)]">Dates</dt>
+                <dd className="font-semibold text-[var(--navy)]">
+                  {formatDate(campaign.start_date)} -{" "}
+                  {formatDate(campaign.end_date)}
+                </dd>
               </div>
               <div>
-                <dt className="text-[#64748B]">Budget</dt>
-                <dd className="font-semibold text-[#0F2444]">{formatCurrency(Number(campaign.budget ?? 0))}</dd>
+                <dt className="text-[var(--muted-foreground)]">Budget</dt>
+                <dd className="font-semibold text-[var(--navy)]">
+                  {formatCurrency(Number(campaign.budget ?? 0))}
+                </dd>
               </div>
             </dl>
             {canWriteCampaigns ? (
               <div className="mt-5">
                 {campaign.status === "completed" ? (
-                  <p className="text-sm font-medium text-[#64748B]">This campaign is completed. Restart it to send the sequence from step 1 again.</p>
+                  <p className="text-sm font-medium text-[var(--muted-foreground)]">
+                    This campaign is completed. Restart it to send the sequence
+                    from step 1 again.
+                  </p>
                 ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
                   {campaign.status !== "completed" ? (
                     <>
-                    {campaign.status === "active" ? (
-                      <Button disabled={pauseCampaign.isPending} onClick={() => pauseCampaign.mutate()} type="button" variant="outline">
-                        <Pause className="h-4 w-4" aria-hidden="true" />
-                        Pause
-                      </Button>
-                    ) : (
-                      <div className="inline-flex" title={!canActivate ? disabledActivationReason : undefined}>
-                        <Button disabled={!canActivate || activateCampaign.isPending} onClick={() => activateCampaign.mutate()} type="button">
-                          <Play className="h-4 w-4" aria-hidden="true" />
-                          {campaign.status === "paused" ? "Resume" : "Activate"}
+                      {campaign.status === "active" ? (
+                        <Button
+                          disabled={pauseCampaign.isPending}
+                          onClick={() => pauseCampaign.mutate()}
+                          type="button"
+                          variant="outline"
+                        >
+                          <Pause className="h-4 w-4" aria-hidden="true" />
+                          Pause
                         </Button>
-                      </div>
-                    )}
+                      ) : (
+                        <div
+                          className="inline-flex"
+                          title={
+                            !canActivate ? disabledActivationReason : undefined
+                          }
+                        >
+                          <Button
+                            disabled={
+                              !canActivate || activateCampaign.isPending
+                            }
+                            onClick={() => activateCampaign.mutate()}
+                            type="button"
+                          >
+                            <Play className="h-4 w-4" aria-hidden="true" />
+                            {campaign.status === "paused"
+                              ? "Resume"
+                              : "Activate"}
+                          </Button>
+                        </div>
+                      )}
                     </>
                   ) : null}
-                  {(campaign.status === "active" || campaign.status === "paused") ? (
-                    <Button disabled={completeCampaign.isPending} onClick={() => completeCampaign.mutate()} type="button" variant="outline">
+                  {campaign.status === "active" ||
+                  campaign.status === "paused" ? (
+                    <Button
+                      disabled={completeCampaign.isPending}
+                      onClick={() => completeCampaign.mutate()}
+                      type="button"
+                      variant="outline"
+                    >
                       <CheckCircle className="h-4 w-4" aria-hidden="true" />
                       Mark Complete
                     </Button>
                   ) : null}
                   {campaign.status !== "draft" ? (
-                    <div className="inline-flex" title={!canRestart ? disabledRestartReason : undefined}>
-                      <Button disabled={!canRestart || restartCampaign.isPending} onClick={() => setRestartCampaignOpen(true)} type="button" variant="outline">
+                    <div
+                      className="inline-flex"
+                      title={!canRestart ? disabledRestartReason : undefined}
+                    >
+                      <Button
+                        disabled={!canRestart || restartCampaign.isPending}
+                        onClick={() => setRestartCampaignOpen(true)}
+                        type="button"
+                        variant="outline"
+                      >
                         <RotateCcw className="h-4 w-4" aria-hidden="true" />
                         Restart
                       </Button>
                     </div>
                   ) : null}
                 </div>
-                {!canActivate && campaign.status !== "active" && campaign.status !== "completed" ? <p className="mt-2 text-xs text-amber-700">{disabledActivationReason}</p> : null}
-                {!canRestart && campaign.status !== "draft" ? <p className="mt-2 text-xs text-amber-700">{disabledRestartReason}</p> : null}
+                {!canActivate &&
+                campaign.status !== "active" &&
+                campaign.status !== "completed" ? (
+                  <p className="mt-2 text-xs text-amber-700">
+                    {disabledActivationReason}
+                  </p>
+                ) : null}
+                {!canRestart && campaign.status !== "draft" ? (
+                  <p className="mt-2 text-xs text-amber-700">
+                    {disabledRestartReason}
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </section>
 
           <section className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-[#0F2444]">Campaign Metrics</h2>
+            <h2 className="text-base font-semibold text-[var(--navy)]">
+              Campaign Metrics
+            </h2>
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
               <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-[#64748B]">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)]">
                   <MailCheck className="h-3.5 w-3.5" aria-hidden="true" />
                   Sent messages
                 </div>
-                <p className="mt-1 text-2xl font-semibold text-[#0F2444]">{metrics?.sent ?? 0}</p>
+                <p className="mt-1 text-2xl font-semibold text-[var(--navy)]">
+                  {metrics?.sent ?? 0}
+                </p>
               </div>
               <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                <p className="text-xs font-medium text-[#64748B]">Opened</p>
-                <p className="mt-1 text-2xl font-semibold text-[#0F2444]">{metrics?.opened ?? 0}</p>
+                <p className="text-xs font-medium text-[var(--muted-foreground)]">
+                  Opened
+                </p>
+                <p className="mt-1 text-2xl font-semibold text-[var(--navy)]">
+                  {metrics?.opened ?? 0}
+                </p>
               </div>
               <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-[#64748B]">
-                  <MousePointerClick className="h-3.5 w-3.5" aria-hidden="true" />
+                <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)]">
+                  <MousePointerClick
+                    className="h-3.5 w-3.5"
+                    aria-hidden="true"
+                  />
                   Clicked
                 </div>
-                <p className="mt-1 text-2xl font-semibold text-[#0F2444]">{metrics?.clicked ?? 0}</p>
+                <p className="mt-1 text-2xl font-semibold text-[var(--navy)]">
+                  {metrics?.clicked ?? 0}
+                </p>
               </div>
               <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-[#64748B]">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)]">
                   <Reply className="h-3.5 w-3.5" aria-hidden="true" />
                   Replied
                 </div>
-                <p className="mt-1 text-2xl font-semibold text-[#0F2444]">{metrics?.replied ?? 0}</p>
+                <p className="mt-1 text-2xl font-semibold text-[var(--navy)]">
+                  {metrics?.replied ?? 0}
+                </p>
               </div>
               <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-[#64748B]">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)]">
                   <Target className="h-3.5 w-3.5" aria-hidden="true" />
                   Converted
                 </div>
-                <p className="mt-1 text-2xl font-semibold text-[#0F2444]">{metrics?.converted ?? 0}</p>
+                <p className="mt-1 text-2xl font-semibold text-[var(--navy)]">
+                  {metrics?.converted ?? 0}
+                </p>
               </div>
             </div>
           </section>
@@ -473,71 +706,151 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
         <section className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-semibold text-[#0F2444]">Campaign Sequence</h2>
-              <p className="mt-1 text-sm text-[#64748B]">Drag steps to reorder. Reorder saves on drop.</p>
+              <h2 className="text-base font-semibold text-[var(--navy)]">
+                Campaign Sequence
+              </h2>
+              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                Drag steps to reorder. Reorder saves on drop.
+              </p>
             </div>
             {canWriteCampaigns ? (
-              <Button onClick={() => { setEditingStep(null); setStepFormOpen(true); }} type="button">
+              <Button
+                onClick={() => {
+                  setEditingStep(null);
+                  setStepFormOpen(true);
+                }}
+                type="button"
+              >
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 Add Step
               </Button>
             ) : null}
           </div>
           <div className="mt-5">
-            {stepsQuery.isLoading ? <Skeleton className="h-72 rounded-xl" /> : null}
-            {!stepsQuery.isLoading && sortedSteps.length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-[#64748B]">No sequence steps yet.</div> : null}
+            {stepsQuery.isLoading ? (
+              <Skeleton className="h-72 rounded-xl" />
+            ) : null}
+            {!stepsQuery.isLoading && sortedSteps.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-[var(--muted-foreground)]">
+                No sequence steps yet.
+              </div>
+            ) : null}
             <DragDropContext onDragEnd={onDragEnd}>
-              <Droppable droppableId="campaign-steps" isDropDisabled={!canWriteCampaigns}>
+              <Droppable
+                droppableId="campaign-steps"
+                isDropDisabled={!canWriteCampaigns}
+              >
                 {(provided) => (
-                  <div className="grid gap-3" ref={provided.innerRef} {...provided.droppableProps}>
+                  <div
+                    className="grid gap-3"
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                  >
                     {sortedSteps.map((step, index) => {
-                      const meta = channelMeta[step.channel] ?? channelMeta.email;
+                      const meta =
+                        channelMeta[step.channel] ?? channelMeta.email;
                       const ChannelIcon = meta.icon;
 
                       return (
-                      <Draggable draggableId={step.id} index={index} isDragDisabled={!canWriteCampaigns} key={step.id}>
-                        {(draggableProvided) => {
-                          const { style, ...draggableProps } = draggableProvided.draggableProps;
+                        <Draggable
+                          draggableId={step.id}
+                          index={index}
+                          isDragDisabled={!canWriteCampaigns}
+                          key={step.id}
+                        >
+                          {(draggableProvided) => {
+                            const { style, ...draggableProps } =
+                              draggableProvided.draggableProps;
 
-                          return (
-                            <article
-                              className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-                              ref={draggableProvided.innerRef}
-                              style={style as CSSProperties | undefined}
-                              {...draggableProps}
-                            >
-                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                <div className="flex min-w-0 gap-3">
-                                  <button className="mt-1 text-[#64748B]" disabled={!canWriteCampaigns} type="button" {...draggableProvided.dragHandleProps}>
-                                    <GripVertical className="h-5 w-5" aria-hidden="true" />
-                                  </button>
-                                  <div className="min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-[#0F2444]">Step {index + 1}</span>
-                                      <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold", meta.className)}>
-                                        <ChannelIcon className="h-3 w-3" aria-hidden="true" />
-                                        {meta.label}
-                                      </span>
-                                      <span className="text-xs font-medium text-[#64748B]">Delay: {step.delay_days} days after previous</span>
-                                      {step.variant ? <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">Variant {step.variant}</span> : null}
+                            return (
+                              <article
+                                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                                ref={draggableProvided.innerRef}
+                                style={style as CSSProperties | undefined}
+                                {...draggableProps}
+                              >
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                  <div className="flex min-w-0 gap-3">
+                                    <button
+                                      className="mt-1 text-[var(--muted-foreground)]"
+                                      disabled={!canWriteCampaigns}
+                                      type="button"
+                                      {...draggableProvided.dragHandleProps}
+                                    >
+                                      <GripVertical
+                                        className="h-5 w-5"
+                                        aria-hidden="true"
+                                      />
+                                    </button>
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-[var(--navy)]">
+                                          Step {index + 1}
+                                        </span>
+                                        <span
+                                          className={cn(
+                                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold",
+                                            meta.className,
+                                          )}
+                                        >
+                                          <ChannelIcon
+                                            className="h-3 w-3"
+                                            aria-hidden="true"
+                                          />
+                                          {meta.label}
+                                        </span>
+                                        <span className="text-xs font-medium text-[var(--muted-foreground)]">
+                                          Delay: {step.delay_days} days after
+                                          previous
+                                        </span>
+                                        {step.variant ? (
+                                          <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                                            Variant {step.variant}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <h3 className="mt-3 font-semibold text-[var(--navy)]">
+                                        {step.subject}
+                                      </h3>
+                                      <p className="mt-1 text-sm text-slate-700">
+                                        {preview(step.body)}
+                                      </p>
                                     </div>
-                                    <h3 className="mt-3 font-semibold text-[#0F2444]">{step.subject}</h3>
-                                    <p className="mt-1 text-sm text-slate-700">{preview(step.body)}</p>
                                   </div>
+                                  {canWriteCampaigns ? (
+                                    <div className="flex gap-2">
+                                      <Button
+                                        onClick={() => {
+                                          setEditingStep(step);
+                                          setStepFormOpen(true);
+                                        }}
+                                        size="sm"
+                                        type="button"
+                                        variant="outline"
+                                      >
+                                        Edit
+                                      </Button>
+                                      <Button
+                                        disabled={deleteStep.isPending}
+                                        onClick={() =>
+                                          deleteStep.mutate(step.id)
+                                        }
+                                        size="sm"
+                                        type="button"
+                                        variant="ghost"
+                                      >
+                                        <Trash2
+                                          className="h-4 w-4"
+                                          aria-hidden="true"
+                                        />
+                                      </Button>
+                                    </div>
+                                  ) : null}
                                 </div>
-                                {canWriteCampaigns ? (
-                                  <div className="flex gap-2">
-                                    <Button onClick={() => { setEditingStep(step); setStepFormOpen(true); }} size="sm" type="button" variant="outline">Edit</Button>
-                                    <Button disabled={deleteStep.isPending} onClick={() => deleteStep.mutate(step.id)} size="sm" type="button" variant="ghost">
-                                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                    </Button>
-                                  </div>
-                                ) : null}
-                              </div>
-                            </article>
-                          );
-                        }}
-                      </Draggable>
+                              </article>
+                            );
+                          }}
+                        </Draggable>
                       );
                     })}
                     {provided.placeholder}
@@ -553,8 +866,12 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
         <section className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-semibold text-[#0F2444]">Enrollments</h2>
-              <p className="mt-1 text-sm text-[#64748B]">Contacts currently enrolled in this campaign.</p>
+              <h2 className="text-base font-semibold text-[var(--navy)]">
+                Enrollments
+              </h2>
+              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                Contacts currently enrolled in this campaign.
+              </p>
             </div>
             {canWriteCampaigns ? (
               <Button onClick={() => setContactSelectOpen(true)} type="button">
@@ -564,22 +881,50 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
             ) : null}
           </div>
           <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
-            {enrollments.length === 0 ? <div className="p-8 text-center text-sm text-[#64748B]">No enrolled contacts yet.</div> : null}
+            {enrollments.length === 0 ? (
+              <div className="p-8 text-center text-sm text-[var(--muted-foreground)]">
+                No enrolled contacts yet.
+              </div>
+            ) : null}
             {enrollments.map((enrollment) => (
-              <div className="grid gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 md:grid-cols-[minmax(0,1.4fr)_120px_140px_120px_auto] md:items-center" key={enrollment.id}>
+              <div
+                className="grid gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 md:grid-cols-[minmax(0,1.4fr)_120px_140px_120px_auto] md:items-center"
+                key={enrollment.id}
+              >
                 <div>
-                  <Link className="font-semibold text-[#0F2444] hover:text-[#2563EB]" href={`/contacts/${enrollment.contact_id}`}>{enrollment.contact_name ?? "Contact"}</Link>
-                  <p className="mt-1 text-xs text-[#64748B]">{enrollment.contact_email}</p>
+                  <Link
+                    className="font-semibold text-[var(--navy)] hover:text-[var(--primary)]"
+                    href={`/contacts/${enrollment.contact_id}`}
+                  >
+                    {enrollment.contact_name ?? "Contact"}
+                  </Link>
+                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                    {enrollment.contact_email}
+                  </p>
                 </div>
-                <span className="text-sm text-[#64748B]">Step {enrollment.step_index + 1}</span>
+                <span className="text-sm text-[var(--muted-foreground)]">
+                  Step {enrollment.step_index + 1}
+                </span>
                 <StatusPill status={enrollment.status} type="campaign" />
-                <span className="text-sm text-[#64748B]">{formatDate(enrollment.enrolled_at)}</span>
+                <span className="text-sm text-[var(--muted-foreground)]">
+                  {formatDate(enrollment.enrolled_at)}
+                </span>
                 {canWriteCampaigns && enrollment.status !== "unsubscribed" ? (
-                  <Button disabled={unenrollContact.isPending} onClick={() => unenrollContact.mutate(enrollment.contact_id)} size="sm" type="button" variant="outline">
+                  <Button
+                    disabled={unenrollContact.isPending}
+                    onClick={() =>
+                      unenrollContact.mutate(enrollment.contact_id)
+                    }
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
                     Unenroll
                   </Button>
                 ) : canWriteCampaigns ? (
-                  <span className="text-sm font-medium text-[#64748B]">Removed</span>
+                  <span className="text-sm font-medium text-[var(--muted-foreground)]">
+                    Removed
+                  </span>
                 ) : null}
               </div>
             ))}
@@ -589,30 +934,44 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
 
       {tab === "metrics" ? (
         <section className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
-          <h2 className="text-base font-semibold text-[#0F2444]">Delivery Metrics</h2>
+          <h2 className="text-base font-semibold text-[var(--navy)]">
+            Delivery Metrics
+          </h2>
           {canWriteCampaigns ? (
             <div className="mt-5 grid gap-3 rounded-xl border border-slate-200 p-4 lg:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_auto] lg:items-end">
               <div>
-                <label className="text-xs font-semibold uppercase tracking-normal text-[#64748B]" htmlFor="metric_contact">
+                <label
+                  className="text-xs font-semibold uppercase tracking-normal text-[var(--muted-foreground)]"
+                  htmlFor="metric_contact"
+                >
                   Contact
                 </label>
                 <select
                   className="mt-1 h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
-                  disabled={metricContactOptions.length === 0 || recordMetric.isPending}
+                  disabled={
+                    metricContactOptions.length === 0 || recordMetric.isPending
+                  }
                   id="metric_contact"
                   onChange={(event) => setMetricContactId(event.target.value)}
                   value={activeMetricContactId}
                 >
-                  {metricContactOptions.length === 0 ? <option value="">No enrolled contacts</option> : null}
+                  {metricContactOptions.length === 0 ? (
+                    <option value="">No enrolled contacts</option>
+                  ) : null}
                   {metricContactOptions.map((enrollment) => (
                     <option key={enrollment.id} value={enrollment.contact_id}>
-                      {enrollment.contact_name ?? enrollment.contact_email ?? "Contact"}
+                      {enrollment.contact_name ??
+                        enrollment.contact_email ??
+                        "Contact"}
                     </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="text-xs font-semibold uppercase tracking-normal text-[#64748B]" htmlFor="metric_step">
+                <label
+                  className="text-xs font-semibold uppercase tracking-normal text-[var(--muted-foreground)]"
+                  htmlFor="metric_step"
+                >
                   Step
                 </label>
                 <select
@@ -644,43 +1003,86 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
                   </Button>
                 ))}
               </div>
-              {recordMetric.isError ? <div className="text-sm text-red-700 lg:col-span-3">Could not record metric.</div> : null}
+              {recordMetric.isError ? (
+                <div className="text-sm text-red-700 lg:col-span-3">
+                  Could not record metric.
+                </div>
+              ) : null}
             </div>
           ) : null}
           {!hasMetrics ? (
-            <div className="mt-5 rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-[#64748B]">No data yet</div>
+            <div className="mt-5 rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-[var(--muted-foreground)]">
+              No data yet
+            </div>
           ) : (
             <>
-              <div className="mt-5 h-72">
-                <ResponsiveContainer height="100%" width="100%">
-                  <LineChart data={metricChartData(metrics)}>
-                    <CartesianGrid stroke="#E2E8F0" vertical={false} />
-                    <XAxis dataKey="label" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Line dataKey="sent" stroke="#2563EB" strokeWidth={2} />
-                    <Line dataKey="opened" stroke="#10B981" strokeWidth={2} />
-                    <Line dataKey="clicked" stroke="#F59E0B" strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              <p className="mt-5 text-sm text-slate-600">
+                Cumulative campaign totals. These totals do not represent a time
+                series.
+              </p>
               <div className="mt-5 grid gap-3 md:grid-cols-4">
-                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3"><p className="text-xs text-[#64748B]">Open Rate</p><p className="text-xl font-semibold text-[#0F2444]">{rate(metrics?.opened ?? 0, metrics?.sent ?? 0)}%</p></div>
-                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3"><p className="text-xs text-[#64748B]">Click Rate</p><p className="text-xl font-semibold text-[#0F2444]">{rate(metrics?.clicked ?? 0, metrics?.sent ?? 0)}%</p></div>
-                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3"><p className="text-xs text-[#64748B]">Reply Rate</p><p className="text-xl font-semibold text-[#0F2444]">{rate(metrics?.replied ?? 0, metrics?.sent ?? 0)}%</p></div>
-                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3"><p className="text-xs text-[#64748B]">Conversion Rate</p><p className="text-xl font-semibold text-[#0F2444]">{rate(metrics?.converted ?? 0, metrics?.sent ?? 0)}%</p></div>
+                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Open Rate
+                  </p>
+                  <p className="text-xl font-semibold text-[var(--navy)]">
+                    {rate(metrics?.opened ?? 0, metrics?.sent ?? 0)}%
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Click Rate
+                  </p>
+                  <p className="text-xl font-semibold text-[var(--navy)]">
+                    {rate(metrics?.clicked ?? 0, metrics?.sent ?? 0)}%
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Reply Rate
+                  </p>
+                  <p className="text-xl font-semibold text-[var(--navy)]">
+                    {rate(metrics?.replied ?? 0, metrics?.sent ?? 0)}%
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    Conversion Rate
+                  </p>
+                  <p className="text-xl font-semibold text-[var(--navy)]">
+                    {rate(metrics?.converted ?? 0, metrics?.sent ?? 0)}%
+                  </p>
+                </div>
               </div>
               <div className="mt-6">
-                <h3 className="text-sm font-semibold text-[#0F2444]">A/B Variant Comparison</h3>
-                {variantComparison.length === 0 ? <p className="mt-2 text-sm text-[#64748B]">No variants configured.</p> : null}
+                <h3 className="text-sm font-semibold text-[var(--navy)]">
+                  Sequence variants
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Configuration overview. This is not an A/B performance
+                  comparison.
+                </p>
+                {variantComparison.length === 0 ? (
+                  <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+                    No variants configured.
+                  </p>
+                ) : null}
                 {variantComparison.length > 0 ? (
                   <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
                     {variantComparison.map((row) => (
-                      <div className="grid gap-2 border-b border-slate-100 px-4 py-3 last:border-b-0 md:grid-cols-[120px_120px_minmax(0,1fr)]" key={row.variant}>
-                        <span className="font-semibold text-[#0F2444]">Variant {row.variant}</span>
-                        <span className="text-sm text-[#64748B]">{row.count} steps</span>
-                        <span className="truncate text-sm text-slate-700">{row.subjects.join(", ")}</span>
+                      <div
+                        className="grid gap-2 border-b border-slate-100 px-4 py-3 last:border-b-0 md:grid-cols-[120px_120px_minmax(0,1fr)]"
+                        key={row.variant}
+                      >
+                        <span className="font-semibold text-[var(--navy)]">
+                          Variant {row.variant}
+                        </span>
+                        <span className="text-sm text-[var(--muted-foreground)]">
+                          {row.count} steps
+                        </span>
+                        <span className="truncate text-sm text-slate-700">
+                          {row.subjects.join(", ")}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -691,9 +1093,70 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
         </section>
       ) : null}
 
+      <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="text-lg font-semibold">Delivery and task history</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Email and SMS delivery attempts, suppressed recipients, and manual
+          follow-ups. A successful worker run does not necessarily mean a
+          message was sent.
+        </p>
+        {delivery.isError ? (
+          <p role="alert" className="mt-3 text-red-700">
+            Could not load delivery history.{" "}
+            <button className="underline" onClick={() => delivery.refetch()}>
+              Retry
+            </button>
+          </p>
+        ) : delivery.isPending ? (
+          <p role="status">Loading history…</p>
+        ) : delivery.data?.length ? (
+          <ul className="mt-4 divide-y">
+            {delivery.data.map((row) => (
+              <li key={row.id} className="py-3 text-sm">
+                <time>{formatDate(row.created_at)}</time> · {row.status}
+                <p>
+                  {row.error ??
+                    String(
+                      row.result.reason ??
+                        row.result.delivery_status ??
+                        row.result.status ??
+                        "Waiting for worker result",
+                    )}
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-slate-600">
+            No processing history recorded yet.
+          </p>
+        )}
+        <div className="mt-3 flex gap-2">
+          <Button
+            variant="outline"
+            disabled={deliveryPage === 1 || delivery.isFetching}
+            onClick={() => setDeliveryPage((p) => p - 1)}
+          >
+            Previous history
+          </Button>
+          <Button
+            variant="outline"
+            disabled={delivery.data?.length !== 50 || delivery.isFetching}
+            onClick={() => setDeliveryPage((p) => p + 1)}
+          >
+            Next history
+          </Button>
+        </div>
+      </section>
+
       {canWriteCampaigns ? (
         <>
-          <CampaignForm campaign={campaign} onOpenChange={setCampaignFormOpen} onSaved={() => void campaignQuery.refetch()} open={campaignFormOpen} />
+          <CampaignForm
+            campaign={campaign}
+            onOpenChange={setCampaignFormOpen}
+            onSaved={() => void campaignQuery.refetch()}
+            open={campaignFormOpen}
+          />
           <SequenceStepForm
             campaignId={campaign.id}
             onOpenChange={(open) => {
@@ -701,10 +1164,18 @@ export function CampaignDetailClient({ campaignId }: CampaignDetailClientProps) 
               if (!open) setEditingStep(null);
             }}
             open={stepFormOpen}
-            previousStepNumber={editingStep ? Math.max(1, editingStep.step_index) : sortedSteps.length}
+            previousStepNumber={
+              editingStep
+                ? Math.max(1, editingStep.step_index)
+                : sortedSteps.length
+            }
             step={editingStep}
           />
-          <ContactSelectModal campaignId={campaign.id} onOpenChange={setContactSelectOpen} open={contactSelectOpen} />
+          <ContactSelectModal
+            campaignId={campaign.id}
+            onOpenChange={setContactSelectOpen}
+            open={contactSelectOpen}
+          />
           <ConfirmDialog
             confirmLabel="Delete"
             description="Delete this draft campaign and its sequence steps. This cannot be undone."

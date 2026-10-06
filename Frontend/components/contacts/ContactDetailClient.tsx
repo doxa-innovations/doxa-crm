@@ -1,13 +1,25 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, Archive, BadgeDollarSign, CheckSquare, Edit, Mail, Phone, StickyNote } from "lucide-react";
+import {
+  Activity,
+  Archive,
+  BadgeDollarSign,
+  CheckSquare,
+  Edit,
+  Mail,
+  Phone,
+  StickyNote,
+} from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { ActivityForm } from "@/components/activities/ActivityForm";
 import { ContactForm } from "@/components/contacts/ContactForm";
-import { ActivityTimeline, contactTimelineToActivityItems } from "@/components/shared/ActivityTimeline";
+import {
+  ActivityTimeline,
+  contactTimelineToActivityItems,
+} from "@/components/shared/ActivityTimeline";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -68,7 +80,10 @@ function timelineIcon(item: ContactTimelineItem) {
   return Activity;
 }
 
-function timelineMatchesFilter(item: ContactTimelineItem, filter: TimelineFilter): boolean {
+function timelineMatchesFilter(
+  item: ContactTimelineItem,
+  filter: TimelineFilter,
+): boolean {
   const activityType = metadataString(item, "activity_type");
 
   if (filter === "all") {
@@ -90,8 +105,12 @@ function timelineMatchesFilter(item: ContactTimelineItem, filter: TimelineFilter
   return item.type === "deal";
 }
 
-function customFieldEntries(contact?: Contact): Array<[string, string | number | boolean]> {
-  return Object.entries(contact?.custom_fields ?? {}).filter(([key]) => !hiddenCustomFieldKeys.has(key));
+function customFieldEntries(
+  contact?: Contact,
+): Array<[string, string | number | boolean]> {
+  return Object.entries(contact?.custom_fields ?? {}).filter(
+    ([key]) => !hiddenCustomFieldKeys.has(key),
+  );
 }
 
 function formatLabel(value: string): string {
@@ -122,12 +141,14 @@ export function ContactDetailClient({ contactId }: ContactDetailClientProps) {
     queryKey: ["contacts", "detail", contactId],
   });
   const timelineQuery = useQuery({
-    queryFn: () => api.get<ContactTimelineItem[]>(`/contacts/${contactId}/timeline`),
+    queryFn: () =>
+      api.get<ContactTimelineItem[]>(`/contacts/${contactId}/timeline`),
     queryKey: ["contacts", "timeline", contactId],
   });
   const accountQuery = useQuery({
     enabled: Boolean(contactQuery.data?.account_id),
-    queryFn: () => api.get<Account>(`/accounts/${contactQuery.data?.account_id ?? ""}`),
+    queryFn: () =>
+      api.get<Account>(`/accounts/${contactQuery.data?.account_id ?? ""}`),
     queryKey: ["accounts", "detail", contactQuery.data?.account_id],
   });
   const archiveMutation = useMutation({
@@ -151,9 +172,16 @@ export function ContactDetailClient({ contactId }: ContactDetailClientProps) {
     [contact?.first_name, contact?.id, contact?.last_name],
   );
   const timeline = timelineQuery.data ?? [];
-  const filteredTimeline = timeline.filter((item) => timelineMatchesFilter(item, filter));
-  const openDealItems = timeline.filter((item) => item.type === "deal" && metadataString(item, "status") === "open");
-  const openDealValue = openDealItems.reduce((total, item) => total + metadataNumber(item, "value"), 0);
+  const filteredTimeline = timeline.filter((item) =>
+    timelineMatchesFilter(item, filter),
+  );
+  const openDealItems = timeline.filter(
+    (item) => item.type === "deal" && metadataString(item, "status") === "open",
+  );
+  const openDealValue = openDealItems.reduce(
+    (total, item) => total + metadataNumber(item, "value"),
+    0,
+  );
   const tags = contact?.tags ?? [];
 
   const filterTabs = useMemo<Array<{ label: string; value: TimelineFilter }>>(
@@ -180,24 +208,38 @@ export function ContactDetailClient({ contactId }: ContactDetailClientProps) {
   }
 
   if (contactQuery.isError || !contact) {
-    return <div className="rounded-xl border border-red-100 bg-white p-5 text-sm text-red-700 shadow-sm">Could not load contact.</div>;
+    return (
+      <div className="rounded-xl border border-red-100 bg-white p-5 text-sm text-red-700 shadow-sm">
+        Could not load contact.
+      </div>
+    );
   }
 
-  const contactSummary = [contact.title, contact.account_name ? `at ${contact.account_name}` : null].filter(Boolean).join(" ");
+  const contactSummary = [
+    contact.title,
+    contact.account_name ? `at ${contact.account_name}` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className="grid gap-6">
       <section className="rounded-xl bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-normal text-[#0F2444]">
+            <h1 className="text-2xl font-semibold tracking-normal text-[var(--navy)]">
               {contact.first_name} {contact.last_name}
             </h1>
-            <p className="mt-1 text-sm text-[#64748B]">{contactSummary || contact.email}</p>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              {contactSummary || contact.email}
+            </p>
             {tags.length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {tags.map((tag) => (
-                  <span className="rounded-full bg-[#EFF6FF] px-2.5 py-1 text-xs font-medium text-[#2563EB]" key={tag}>
+                  <span
+                    className="rounded-full bg-[var(--background)] px-2.5 py-1 text-xs font-medium text-[var(--primary)]"
+                    key={tag}
+                  >
                     {tag}
                   </span>
                 ))}
@@ -213,11 +255,19 @@ export function ContactDetailClient({ contactId }: ContactDetailClientProps) {
             ) : null}
             {canWriteContacts ? (
               <>
-                <Button onClick={() => setEditOpen(true)} type="button" variant="outline">
+                <Button
+                  onClick={() => setEditOpen(true)}
+                  type="button"
+                  variant="outline"
+                >
                   <Edit className="h-4 w-4" aria-hidden="true" />
                   Edit
                 </Button>
-                <Button onClick={() => setConfirmArchive(true)} type="button" variant="ghost">
+                <Button
+                  onClick={() => setConfirmArchive(true)}
+                  type="button"
+                  variant="ghost"
+                >
                   <Archive className="h-4 w-4" aria-hidden="true" />
                   Archive
                 </Button>
@@ -231,8 +281,12 @@ export function ContactDetailClient({ contactId }: ContactDetailClientProps) {
         <section className="rounded-xl bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <h2 className="text-base font-semibold text-[#0F2444]">Timeline</h2>
-              <p className="mt-1 text-sm text-[#64748B]">Recent customer touchpoints and related work.</p>
+              <h2 className="text-base font-semibold text-[var(--navy)]">
+                Timeline
+              </h2>
+              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                Recent customer touchpoints and related work.
+              </p>
             </div>
           </div>
 
@@ -244,69 +298,115 @@ export function ContactDetailClient({ contactId }: ContactDetailClientProps) {
                 ))}
               </div>
             ) : (
-              <ActivityTimeline items={contactTimelineToActivityItems(timeline)} />
+              <ActivityTimeline
+                items={contactTimelineToActivityItems(timeline)}
+              />
             )}
           </div>
         </section>
 
         <aside className="grid gap-4 content-start">
           <section className="rounded-xl bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-[#0F2444]">Contact Info</h2>
+            <h2 className="text-base font-semibold text-[var(--navy)]">
+              Contact Info
+            </h2>
             <dl className="mt-4 grid gap-3 text-sm">
               <div>
-                <dt className="text-[#64748B]">Email</dt>
-                <dd className="mt-1 font-medium text-[#0F2444]">{contact.email}</dd>
+                <dt className="text-[var(--muted-foreground)]">Email</dt>
+                <dd className="mt-1 font-medium text-[var(--navy)]">
+                  {contact.email}
+                </dd>
               </div>
               <div>
-                <dt className="text-[#64748B]">Phone</dt>
-                <dd className="mt-1 font-medium text-[#0F2444]">{contact.phone}</dd>
+                <dt className="text-[var(--muted-foreground)]">Phone</dt>
+                <dd className="mt-1 font-medium text-[var(--navy)]">
+                  {contact.phone}
+                </dd>
               </div>
               <div>
-                <dt className="text-[#64748B]">SMS</dt>
-                <dd className="mt-1 font-medium text-[#0F2444]">{smsConsentLabel(contact)}</dd>
+                <dt className="text-[var(--muted-foreground)]">SMS</dt>
+                <dd className="mt-1 font-medium text-[var(--navy)]">
+                  {smsConsentLabel(contact)}
+                </dd>
               </div>
               <div>
-                <dt className="text-[#64748B]">Owner</dt>
-                <dd className="mt-1 font-medium text-[#0F2444]">{contact.owner_name ?? "Unassigned"}</dd>
+                <dt className="text-sm text-slate-600">Campaign email</dt>
+                <dd>
+                  {contact.email_opted_out_at
+                    ? "Suppressed — opted out or delivery complaint"
+                    : "Not suppressed"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[var(--muted-foreground)]">Owner</dt>
+                <dd className="mt-1 font-medium text-[var(--navy)]">
+                  {contact.owner_name ?? "Unassigned"}
+                </dd>
               </div>
               {customFieldEntries(contact).map(([key, value]) => (
                 <div key={key}>
-                  <dt className="text-[#64748B]">{formatLabel(key)}</dt>
-                  <dd className="mt-1 font-medium text-[#0F2444]">{String(value)}</dd>
+                  <dt className="text-[var(--muted-foreground)]">
+                    {formatLabel(key)}
+                  </dt>
+                  <dd className="mt-1 font-medium text-[var(--navy)]">
+                    {String(value)}
+                  </dd>
                 </div>
               ))}
             </dl>
           </section>
 
           <section className="rounded-xl bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-[#0F2444]">Linked Account</h2>
+            <h2 className="text-base font-semibold text-[var(--navy)]">
+              Linked Account
+            </h2>
             {contact.account_id ? (
               <div className="mt-4">
-                <Link className="font-semibold text-[#2563EB] hover:underline" href={`/accounts/${contact.account_id}`}>
-                  {contact.account_name ?? accountQuery.data?.name ?? "Open account"}
+                <Link
+                  className="font-semibold text-[var(--primary)] hover:underline"
+                  href={`/accounts/${contact.account_id}`}
+                >
+                  {contact.account_name ??
+                    accountQuery.data?.name ??
+                    "Open account"}
                 </Link>
                 {accountQuery.data ? (
                   <div className="mt-3">
-                    <span className="inline-flex h-6 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 text-xs font-medium text-[#64748B]">
+                    <span className="inline-flex h-6 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 text-xs font-medium text-[var(--muted-foreground)]">
                       {formatLabel(accountQuery.data.tier)}
                     </span>
                   </div>
                 ) : null}
               </div>
             ) : (
-              <p className="mt-3 text-sm text-[#64748B]">No account linked.</p>
+              <p className="mt-3 text-sm text-[var(--muted-foreground)]">
+                No account linked.
+              </p>
             )}
           </section>
 
           <section className="rounded-xl bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-[#0F2444]">Open Deals</h2>
-            <p className="mt-3 text-3xl font-bold text-[#0F2444]">{openDealItems.length}</p>
-            <p className="mt-1 text-sm font-medium text-[#2563EB]">{formatCurrency(openDealValue)}</p>
+            <h2 className="text-base font-semibold text-[var(--navy)]">
+              Open Deals
+            </h2>
+            <p className="mt-3 text-3xl font-bold text-[var(--navy)]">
+              {openDealItems.length}
+            </p>
+            <p className="mt-1 text-sm font-medium text-[var(--primary)]">
+              {formatCurrency(openDealValue)}
+            </p>
           </section>
         </aside>
       </div>
 
-      {canWriteContacts ? <ContactForm contact={contact} onOpenChange={setEditOpen} onSaved={() => void contactQuery.refetch()} open={editOpen} /> : null}
+      {canWriteContacts ? (
+        <ContactForm
+          contact={contact}
+          onOpenChange={setEditOpen}
+          onSaved={() => void contactQuery.refetch()}
+          open={editOpen}
+        />
+      ) : null}
       {canWriteActivities ? (
         <ActivityForm
           initialLink={activityInitialLink}

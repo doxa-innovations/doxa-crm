@@ -36,6 +36,11 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    from app.middleware.audit import audit_context
+    context = audit_context.get()
+    if context is not None:
+        context.user_id = user.id
+
     return user
 
 

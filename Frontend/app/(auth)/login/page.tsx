@@ -1,12 +1,18 @@
-
 "use client";
 
 import { ArrowRight, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
@@ -16,7 +22,10 @@ function loginErrorMessage(error: unknown): string {
   const message =
     error instanceof Error
       ? error.message
-      : typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+      : typeof error === "object" &&
+          error !== null &&
+          "message" in error &&
+          typeof error.message === "string"
         ? error.message
         : typeof error === "string"
           ? error
@@ -44,10 +53,20 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   React.useEffect(() => {
-    const nextCallbackUrl = new URLSearchParams(window.location.search).get("callbackUrl");
-    setCallbackUrl(nextCallbackUrl?.startsWith("/") && !nextCallbackUrl.startsWith("//") && !nextCallbackUrl.includes("\\") ? nextCallbackUrl : "/dashboard");
+    const nextCallbackUrl = new URLSearchParams(window.location.search).get(
+      "callbackUrl",
+    );
+    setCallbackUrl(
+      nextCallbackUrl?.startsWith("/") &&
+        !nextCallbackUrl.startsWith("//") &&
+        !nextCallbackUrl.includes("\\")
+        ? nextCallbackUrl
+        : "/dashboard",
+    );
     if (new URLSearchParams(window.location.search).has("error")) {
-      setErrorMessage("Google sign-in was not completed. Use an approved account or contact your administrator.");
+      setErrorMessage(
+        "Google sign-in was not completed. Use an approved account or contact your administrator.",
+      );
     }
   }, []);
 
@@ -55,8 +74,15 @@ export default function LoginPage() {
     setErrorMessage(null);
     setIsSubmitting(true);
     try {
-      const result = await authClient.signIn.social({ provider: "google", callbackURL: callbackUrl, errorCallbackURL: "/login?error=google" });
-      if (result.error) throw new Error(result.error.message || "Google sign-in failed. Please try again.");
+      const result = await authClient.signIn.social({
+        provider: "google",
+        callbackURL: callbackUrl,
+        errorCallbackURL: "/login?error=google",
+      });
+      if (result.error)
+        throw new Error(
+          result.error.message || "Google sign-in failed. Please try again.",
+        );
     } catch (error) {
       setErrorMessage(loginErrorMessage(error));
       setIsSubmitting(false);
@@ -77,7 +103,9 @@ export default function LoginPage() {
       });
 
       if (error) {
-        setErrorMessage(loginErrorMessage(error) || "Email or password is not correct.");
+        setErrorMessage(
+          loginErrorMessage(error) || "Email or password is not correct.",
+        );
         return;
       }
 
@@ -102,7 +130,9 @@ export default function LoginPage() {
             </div>
             <div>
               <p className="text-lg font-semibold text-[#0f2a44]">Doxa CRM</p>
-              <p className="text-xs font-medium uppercase tracking-normal text-slate-500">Secure workspace</p>
+              <p className="text-xs font-medium uppercase tracking-normal text-slate-500">
+                Secure workspace
+              </p>
             </div>
           </div>
           <div>
@@ -111,10 +141,18 @@ export default function LoginPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <Button className="mb-5 w-full" variant="outline" disabled={isSubmitting} type="button" onClick={signInWithGoogle}>
+          <Button
+            className="mb-5 w-full"
+            variant="outline"
+            disabled={isSubmitting}
+            type="button"
+            onClick={signInWithGoogle}
+          >
             Continue with Google
           </Button>
-          <p className="mb-4 text-center text-sm text-slate-600">Or sign in with your CRM password</p>
+          <p className="mb-4 text-center text-sm text-slate-600">
+            Or sign in with your CRM password
+          </p>
           <form className="grid gap-4" onSubmit={onSubmit}>
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
@@ -142,14 +180,27 @@ export default function LoginPage() {
               />
             </div>
             {errorMessage ? (
-              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+              <div
+                className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+                role="alert"
+              >
                 {errorMessage}
               </div>
             ) : null}
-            <Button className="mt-2 w-full" disabled={isSubmitting} type="submit">
+            <Button
+              className="mt-2 w-full"
+              disabled={isSubmitting}
+              type="submit"
+            >
               {isSubmitting ? "Signing in..." : "Sign in"}
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Button>
+            <Link
+              className="block text-sm text-blue-700 underline"
+              href="/forgot-password"
+            >
+              Forgot your password?
+            </Link>
           </form>
         </CardContent>
       </Card>

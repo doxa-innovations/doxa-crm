@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.models.workspace import UserInvitation, UserPreference
 from app.models.base import Base
 from app.models.activities import Activity, ActivityType, Task, TaskPriority, TaskStatus
 from app.models.audit import AuditLog
@@ -33,6 +34,8 @@ from app.models.users import Role, User, UserRole, UserRoleName
 from app.models.webhooks import WebhookLog, WebhookSubscription
 
 __all__ = [
+    "UserInvitation",
+    "UserPreference",
     "Account",
     "AccountTier",
     "Activity",

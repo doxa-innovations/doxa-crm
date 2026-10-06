@@ -299,7 +299,7 @@ async def test_enroll_contacts_is_idempotent_for_active_enrollment(monkeypatch):
     )
     db = FakeSession(
         [
-            FakeResult(value=SimpleNamespace(id=campaign_id, status=CampaignStatus.active)),
+            FakeResult(value=SimpleNamespace(id=campaign_id, status=CampaignStatus.active, start_date=date.today(), end_date=date.today())),
             FakeResult(value=contact),
             FakeResult(value=enrollment),
             FakeResult(value=contact),
@@ -343,7 +343,7 @@ async def test_enroll_contacts_restarts_unsubscribed_enrollment(monkeypatch):
     )
     db = FakeSession(
         [
-            FakeResult(value=SimpleNamespace(id=campaign_id, status=CampaignStatus.active)),
+            FakeResult(value=SimpleNamespace(id=campaign_id, status=CampaignStatus.active, start_date=date.today(), end_date=date.today())),
             FakeResult(value=contact),
             FakeResult(value=enrollment),
             FakeResult(value=contact),
@@ -576,6 +576,7 @@ async def test_sequence_step_crud_routes(app, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_process_campaign_step_sends_email_records_metric_and_schedules_next(monkeypatch):
+    monkeypatch.setenv("PUBLIC_APP_URL", "http://localhost:3105")
     campaign_id = uuid4()
     contact_id = uuid4()
     enrollment_id = uuid4()
@@ -608,7 +609,7 @@ async def test_process_campaign_step_sends_email_records_metric_and_schedules_ne
     db = FakeSession(
         [
             FakeResult(value=enrollment),
-            FakeResult(value=SimpleNamespace(id=campaign_id, status=CampaignStatus.active)),
+            FakeResult(value=SimpleNamespace(id=campaign_id, status=CampaignStatus.active, start_date=date.today(), end_date=date.today())),
             FakeResult(value=contact),
             FakeResult(value=current_step),
             FakeResult(value=None),
@@ -699,7 +700,7 @@ async def test_process_campaign_step_sends_sms_for_opted_in_contact(monkeypatch)
     db = FakeSession(
         [
             FakeResult(value=enrollment),
-            FakeResult(value=SimpleNamespace(id=campaign_id, status=CampaignStatus.active)),
+            FakeResult(value=SimpleNamespace(id=campaign_id, status=CampaignStatus.active, start_date=date.today(), end_date=date.today())),
             FakeResult(value=contact),
             FakeResult(value=current_step),
             FakeResult(value=None),
@@ -756,7 +757,7 @@ async def test_process_campaign_step_skips_sms_without_opt_in(monkeypatch):
     db = FakeSession(
         [
             FakeResult(value=enrollment),
-            FakeResult(value=SimpleNamespace(id=campaign_id, status=CampaignStatus.active)),
+            FakeResult(value=SimpleNamespace(id=campaign_id, status=CampaignStatus.active, start_date=date.today(), end_date=date.today())),
             FakeResult(value=contact),
             FakeResult(value=current_step),
             FakeResult(value=None),

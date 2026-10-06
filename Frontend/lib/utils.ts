@@ -9,7 +9,8 @@ export function cn(...inputs: ClassValue[]): string {
 export function formatCurrency(value: number, currency = "USD"): string {
   return new Intl.NumberFormat("en-US", {
     currency,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
     style: "currency",
   }).format(value);
 }
@@ -32,4 +33,21 @@ export function getInitials(name: string): string {
     .join("");
 
   return initials || "U";
+}
+
+/** Format an instant for datetime-local without discarding its timezone offset. */
+export function toLocalDateTime(value: string | Date): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function formatReportCurrency(value: number): string {
+  let currency = "USD";
+  try {
+    if (typeof window !== "undefined")
+      currency = localStorage.getItem("doxa:report-currency") || "USD";
+  } catch {}
+  return formatCurrency(value, currency);
 }

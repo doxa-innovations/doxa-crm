@@ -100,6 +100,7 @@ class ContactTagsUpdate(BaseModel):
 
 
 class ContactResponse(BaseModel):
+    email_opted_out_at: datetime | None = None
     id: UUID
     first_name: str
     last_name: str

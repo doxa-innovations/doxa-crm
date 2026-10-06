@@ -3,16 +3,30 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import HTTPException, APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.auth.permissions import TASK_WRITE_ROLES, is_manager
 from app.dependencies import get_current_user, get_db, require_role
 from app.models import TaskStatus, User
 from app.schemas.activities import TaskCreate, TaskResponse, TaskSnoozeRequest, TaskUpdate
+from app.services.linked_access import validate_linked_access
 from app.services import tasks as tasks_service
 
-router = APIRouter(prefix="/tasks", tags=["Tasks"])
+async def require_visible_record(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    task_id: UUID | None = None,
+):
+    if task_id is not None and not is_manager(current_user):
+        from app.models import Task
+        result = await db.execute(select(Task.id).where(Task.id == task_id, Task.owner_id == current_user.id))
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+
+router = APIRouter(dependencies=[Depends(require_visible_record)], prefix="/tasks", tags=["Tasks"])
 
 
 @router.get("/", response_model=list[TaskResponse])
@@ -66,6 +80,7 @@ async def create_task(
     current_user: Annotated[User, Depends(require_role(*TASK_WRITE_ROLES))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TaskResponse:
+    await validate_linked_access(db, current_user, task_in)
     return await tasks_service.create_task(db, task_in, current_user)
 
 
@@ -85,6 +100,7 @@ async def update_task(
     current_user: Annotated[User, Depends(require_role(*TASK_WRITE_ROLES))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TaskResponse:
+    await validate_linked_access(db, current_user, task_in)
     return await tasks_service.update_task(db, task_id, task_in)
 
 

@@ -71,7 +71,8 @@ class AccountResponse(BaseModel):
     custom_fields: CustomFields
     is_active: bool
     linked_contact_count: int = 0
-    total_deal_value: Decimal = Decimal("0")
+    total_deal_value: Decimal = Decimal("0")  # Legacy USD-only field
+    deal_values_by_currency: dict[str, Decimal] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
 

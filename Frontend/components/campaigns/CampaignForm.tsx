@@ -1,4 +1,5 @@
 "use client";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -10,11 +11,30 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { api } from "@/lib/api";
-import type { Campaign, CampaignCreate, CampaignType, CampaignUpdate } from "@/types/api";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { api, apiErrorDetail } from "@/lib/api";
+import type {
+  Campaign,
+  CampaignCreate,
+  CampaignType,
+  CampaignUpdate,
+} from "@/types/api";
 
-const campaignTypes: CampaignType[] = ["email", "sms", "event", "social", "cold_call"];
+const campaignTypes: CampaignType[] = [
+  "email",
+  "sms",
+  "event",
+  "social",
+  "cold_call",
+];
 
 const campaignFormSchema = z.object({
   budget: z.string().optional(),
@@ -60,11 +80,21 @@ function optionLabel(value: string): string {
     .join(" ");
 }
 
-function fieldError(message?: string) {
-  return message ? <p className="mt-1 text-xs text-red-600">{message}</p> : null;
+function fieldError(message?: string, field?: string) {
+  return message ? (
+    <p
+      id={field ? `${field}-error` : undefined}
+      role="alert"
+      className="mt-1 text-xs text-red-600"
+    >
+      {message}
+    </p>
+  ) : null;
 }
 
-function buildPayload(values: CampaignFormValues): CampaignCreate | CampaignUpdate {
+function buildPayload(
+  values: CampaignFormValues,
+): CampaignCreate | CampaignUpdate {
   return {
     budget: values.budget ? Number(values.budget) : 0,
     end_date: values.end_date,
@@ -74,12 +104,21 @@ function buildPayload(values: CampaignFormValues): CampaignCreate | CampaignUpda
   };
 }
 
-export function CampaignForm({ campaign, onOpenChange, onSaved, open }: CampaignFormProps) {
+export function CampaignForm({
+  campaign,
+  onOpenChange,
+  onSaved,
+  open,
+}: CampaignFormProps) {
   const queryClient = useQueryClient();
   const form = useForm<CampaignFormValues>({
     defaultValues: valuesFromCampaign(campaign),
     resolver: zodResolver(campaignFormSchema),
   });
+  const confirmDiscard = useUnsavedChanges(open && form.formState.isDirty);
+  const handleOpenChange = (next: boolean) => {
+    if (next || confirmDiscard()) onOpenChange(next);
+  };
 
   useEffect(() => {
     if (open) {
@@ -91,12 +130,19 @@ export function CampaignForm({ campaign, onOpenChange, onSaved, open }: Campaign
     mutationFn: (values: CampaignFormValues) => {
       const payload = buildPayload(values);
       if (campaign) {
-        return api.patch<Campaign, CampaignUpdate>(`/campaigns/${campaign.id}`, payload as CampaignUpdate);
+        return api.patch<Campaign, CampaignUpdate>(
+          `/campaigns/${campaign.id}`,
+          payload as CampaignUpdate,
+        );
       }
 
-      return api.post<Campaign, CampaignCreate>("/campaigns/", payload as CampaignCreate);
+      return api.post<Campaign, CampaignCreate>(
+        "/campaigns/",
+        payload as CampaignCreate,
+      );
     },
     onSuccess: (savedCampaign) => {
+      form.reset(form.getValues());
       void queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       onSaved?.(savedCampaign);
@@ -107,18 +153,33 @@ export function CampaignForm({ campaign, onOpenChange, onSaved, open }: Campaign
   const submitting = saveCampaign.isPending;
 
   return (
-    <Sheet onOpenChange={onOpenChange} open={open}>
+    <Sheet onOpenChange={handleOpenChange} open={open}>
       <SheetContent>
         <SheetHeader>
           <SheetTitle>{campaign ? "Edit Campaign" : "New Campaign"}</SheetTitle>
-          <SheetDescription>{campaign ? "Update campaign timing and budget." : "Create a campaign draft."}</SheetDescription>
+          <SheetDescription>
+            {campaign
+              ? "Update campaign timing and budget."
+              : "Create a campaign draft."}
+          </SheetDescription>
         </SheetHeader>
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={form.handleSubmit((values) => saveCampaign.mutate(values))}>
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={form.handleSubmit((values) => saveCampaign.mutate(values))}
+        >
           <SheetBody className="space-y-5">
             <div>
               <Label htmlFor="campaign_name">Name</Label>
-              <Input id="campaign_name" disabled={submitting} {...form.register("name")} />
-              {fieldError(form.formState.errors.name?.message)}
+              <Input
+                id="campaign_name"
+                disabled={submitting}
+                aria-invalid={Boolean(form.formState.errors.name)}
+                aria-describedby={
+                  form.formState.errors.name ? "name-error" : undefined
+                }
+                {...form.register("name")}
+              />
+              {fieldError(form.formState.errors.name?.message, "name")}
             </div>
 
             <div>
@@ -127,6 +188,10 @@ export function CampaignForm({ campaign, onOpenChange, onSaved, open }: Campaign
                 className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
                 disabled={submitting}
                 id="campaign_type"
+                aria-invalid={Boolean(form.formState.errors.type)}
+                aria-describedby={
+                  form.formState.errors.type ? "type-error" : undefined
+                }
                 {...form.register("type")}
               >
                 {campaignTypes.map((type) => (
@@ -140,28 +205,80 @@ export function CampaignForm({ campaign, onOpenChange, onSaved, open }: Campaign
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="campaign_start">Start Date</Label>
-                <Input id="campaign_start" disabled={submitting} type="date" {...form.register("start_date")} />
-                {fieldError(form.formState.errors.start_date?.message)}
+                <Input
+                  id="campaign_start"
+                  disabled={submitting}
+                  type="date"
+                  aria-invalid={Boolean(form.formState.errors.start_date)}
+                  aria-describedby={
+                    form.formState.errors.start_date
+                      ? "start_date-error"
+                      : undefined
+                  }
+                  {...form.register("start_date")}
+                />
+                {fieldError(
+                  form.formState.errors.start_date?.message,
+                  "start_date",
+                )}
               </div>
               <div>
                 <Label htmlFor="campaign_end">End Date</Label>
-                <Input id="campaign_end" disabled={submitting} type="date" {...form.register("end_date")} />
-                {fieldError(form.formState.errors.end_date?.message)}
+                <Input
+                  id="campaign_end"
+                  disabled={submitting}
+                  type="date"
+                  aria-invalid={Boolean(form.formState.errors.end_date)}
+                  aria-describedby={
+                    form.formState.errors.end_date
+                      ? "end_date-error"
+                      : undefined
+                  }
+                  {...form.register("end_date")}
+                />
+                {fieldError(
+                  form.formState.errors.end_date?.message,
+                  "end_date",
+                )}
               </div>
             </div>
 
             <div>
               <Label htmlFor="campaign_budget">Budget</Label>
-              <Input id="campaign_budget" disabled={submitting} min="0" step="100" type="number" {...form.register("budget")} />
+              <Input
+                id="campaign_budget"
+                disabled={submitting}
+                min="0"
+                step="100"
+                type="number"
+                aria-invalid={Boolean(form.formState.errors.budget)}
+                aria-describedby={
+                  form.formState.errors.budget ? "budget-error" : undefined
+                }
+                {...form.register("budget")}
+              />
             </div>
 
-            {saveCampaign.isError ? <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">Could not save campaign.</div> : null}
+            {saveCampaign.isError ? (
+              <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+                {apiErrorDetail(saveCampaign.error, "Could not save campaign.")}
+              </div>
+            ) : null}
           </SheetBody>
           <SheetFooter>
-            <Button disabled={submitting} onClick={() => onOpenChange(false)} type="button" variant="outline">
+            <Button
+              disabled={submitting}
+              onClick={() => handleOpenChange(false)}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
-            <Button className="bg-[#2563EB] hover:bg-blue-700" disabled={submitting} type="submit">
+            <Button
+              className="bg-[var(--primary)] hover:bg-blue-700"
+              disabled={submitting}
+              type="submit"
+            >
               <Save className="h-4 w-4" aria-hidden="true" />
               Save Campaign
             </Button>

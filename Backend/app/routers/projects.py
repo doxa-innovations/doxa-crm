@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile, status
+from fastapi import HTTPException, APIRouter, Depends, File, Form, Query, Request, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.permissions import PROJECT_EDITOR_ROLES
@@ -162,7 +162,9 @@ async def upload_document(
     file: UploadFile = File(...),
     description: str | None = Form(default=None),
 ) -> ProjectDocumentResponse:
-    content = await file.read()
+    content = await file.read(20 * 1024 * 1024 + 1)
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Document must be 20 MB or smaller")
     return await projects_service.upload_document(
         db,
         project_id,
@@ -202,3 +204,25 @@ async def get_portal_project(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ProjectPortalResponse:
     return await projects_service.get_portal_project(db, portal_token)
+
+
+@router.post("/{project_id}/portal/rotate", response_model=ProjectResponse)
+async def rotate_portal(project_id: UUID, current_user: Annotated[User, Depends(require_role(*PROJECT_EDITOR_ROLES))], db: Annotated[AsyncSession, Depends(get_db)]):
+    project = await projects_service.get_project_model(db, project_id)
+    project.portal_token = str(uuid4())
+    await db.commit()
+    return await projects_service.get_project(db, project_id)
+
+
+@router.patch("/{project_id}/documents/{document_id}/visibility")
+async def document_visibility(project_id: UUID, document_id: UUID, visible: bool, current_user: Annotated[User, Depends(require_role(*PROJECT_EDITOR_ROLES))], db: Annotated[AsyncSession, Depends(get_db)]):
+    from sqlalchemy import select
+    from app.models import ProjectDocument
+    await projects_service.get_project_model(db, project_id)
+    result = await db.execute(select(ProjectDocument).where(ProjectDocument.id == document_id, ProjectDocument.project_id == project_id))
+    document = result.scalar_one_or_none()
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    document.customer_visible = visible
+    await db.commit()
+    return {"customer_visible": visible}

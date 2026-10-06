@@ -33,6 +33,8 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectUpdate(BaseModel):
+    portal_enabled: bool | None = None
+    portal_expires_at: datetime | None = None
     name: str | None = Field(default=None, min_length=1, max_length=255)
     status: str | None = Field(default=None, min_length=1, max_length=80)
     start_date: date | None = None
@@ -66,6 +68,7 @@ class MilestoneResponse(BaseModel):
 
 
 class ProjectDocumentResponse(BaseModel):
+    customer_visible: bool = False
     id: UUID
     project_id: UUID
     filename: str
@@ -91,6 +94,8 @@ class ProjectResponse(BaseModel):
     health: ProjectHealth
     owner_id: UUID
     owner_name: str | None = None
+    portal_enabled: bool = True
+    portal_expires_at: datetime | None = None
     portal_token: str
     is_active: bool
     milestones: list[MilestoneResponse] = Field(default_factory=list)
@@ -105,7 +110,15 @@ class PortalMilestoneResponse(BaseModel):
     completed: bool
 
 
+class PortalDocumentResponse(BaseModel):
+    filename: str
+    download_url: str
+
+
 class ProjectPortalResponse(BaseModel):
+    support_email: str | None = None
+    updated_at: datetime
+    documents: list[PortalDocumentResponse] = Field(default_factory=list)
     project_name: str
     account_name: str | None = None
     health: ProjectHealth

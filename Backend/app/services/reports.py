@@ -214,6 +214,7 @@ async def pipeline_summary(
     date_from: date | None = None,
     date_to: date | None = None,
     use_snapshot: bool = True,
+    open_only: bool = False,
 ) -> list[PipelineSummaryRow]:
     if use_snapshot and not any([pipeline_id, owner_id, date_from, date_to]):
         snapshot_rows = _rows_from_snapshot(await _snapshot_data(db, "pipeline_summary"), PipelineSummaryRow)
@@ -235,6 +236,8 @@ async def pipeline_summary(
         .group_by(stages.c.id, stages.c.name, stages.c.probability, stages.c.order_index)
         .order_by(stages.c.order_index.asc())
     )
+    if open_only:
+        query = query.where(deals.c.status == DealStatus.open)
     if pipeline_id:
         query = query.where(deals.c.pipeline_id == pipeline_id)
     if owner_id:
@@ -777,7 +780,7 @@ async def dashboard(db: AsyncSession) -> DashboardResponse:
         leads_last_month=_int(leads_last_month),
         overdue_tasks_count=_int(overdue_result.scalar_one()),
         activities_this_week=_int(activity_result.scalar_one()),
-        pipeline_by_stage=await pipeline_summary(db, use_snapshot=True),
+        pipeline_by_stage=await pipeline_summary(db, use_snapshot=False, open_only=True),
     )
 
 
@@ -835,6 +838,13 @@ CUSTOM_ENTITY_COLUMNS = {
     },
 }
 
+# Readable display fields coexist with IDs used by precise relationship filters.
+for entity, table, owner_column in (("deals", deals, deals.c.owner_id), ("leads", leads, leads.c.assigned_to), ("contacts", contacts, contacts.c.owner_id), ("activities", activities, activities.c.owner_id)):
+    CUSTOM_ENTITY_COLUMNS[entity]["owner_name"] = select(users.c.full_name).where(users.c.id == owner_column).correlate(table).scalar_subquery()
+    if "account_id" in table.c:
+        CUSTOM_ENTITY_COLUMNS[entity]["account_name"] = select(accounts.c.name).where(accounts.c.id == table.c.account_id, accounts.c.is_active.is_(True)).correlate(table).scalar_subquery()
+
+
 CUSTOM_ENTITY_TABLES = {
     "deals": deals,
     "leads": leads,
@@ -855,6 +865,34 @@ def _custom_column(request: CustomReportRequest, field: str):
 
 
 def _custom_filter_condition(column, operator: str, value: Any):
+    expected = column.type.python_type
+    def coerce(item):
+        if item is None:
+            return None
+        try:
+            if expected is str:
+                if not isinstance(item, str): raise ValueError()
+                return item
+            if expected is datetime:
+                return item if isinstance(item, datetime) else datetime.fromisoformat(str(item).replace("Z", "+00:00"))
+            if expected is date:
+                return item if isinstance(item, date) else date.fromisoformat(str(item))
+            if expected in (float, int, Decimal) and isinstance(item, bool): raise ValueError()
+            result = expected(item)
+            if isinstance(result, (float, Decimal)) and not math.isfinite(result): raise ValueError()
+            return result
+        except (ValueError, TypeError, ArithmeticError) as exc:
+            raise HTTPException(422, f"Invalid filter value for {getattr(column, 'name', 'field')}") from exc
+    if operator == "contains" and expected is not str:
+        raise HTTPException(422, "Contains requires a text field")
+    if operator == "in":
+        if not isinstance(value, list) or len(value) > 1000:
+            raise HTTPException(422, "In requires a list of at most 1,000 values")
+        value = [coerce(item) for item in value]
+    else:
+        value = coerce(value)
+    if value is None and operator not in {"eq", "ne"}:
+        raise HTTPException(422, "This operator requires a filter value")
     if operator == "eq":
         return column == value
     if operator == "ne":
@@ -877,6 +915,8 @@ def _custom_filter_condition(column, operator: str, value: Any):
 
 
 async def custom_report(db: AsyncSession, request: CustomReportRequest) -> CustomReportResponse:
+    if request.group_by and request.sort_by and request.sort_by != request.group_by:
+        raise HTTPException(status_code=422, detail="Grouped reports must sort by their grouping field")
     table = CUSTOM_ENTITY_TABLES[request.entity]
     selected_columns = [_custom_column(request, field).label(field) for field in request.fields]
 
@@ -902,6 +942,8 @@ async def custom_report(db: AsyncSession, request: CustomReportRequest) -> Custo
         )
 
     if request.date_range:
+        if request.date_range.from_ and request.date_range.to and request.date_range.from_ > request.date_range.to:
+            raise HTTPException(422, "Report end date must follow start date")
         date_column = _custom_column(request, request.date_range.field)
         for condition in _date_filter(date_column, request.date_range.from_, request.date_range.to):
             query = query.where(condition)
@@ -910,8 +952,10 @@ async def custom_report(db: AsyncSession, request: CustomReportRequest) -> Custo
         sort_column = _custom_column(request, request.sort_by)
         query = query.order_by(sort_column.desc() if request.sort_dir == "desc" else sort_column.asc())
 
-    result = await db.execute(query.limit(1000))
+    result = await db.execute(query.limit(10001))
     raw_rows = result.mappings().all()
+    if len(raw_rows) > 10000:
+        raise HTTPException(status_code=422, detail="Report exceeds 10,000 rows. Narrow the date range or filters before running or exporting.")
     rows = [[_serialize(row[column]) for column in columns] for row in raw_rows]
     return CustomReportResponse(columns=columns, rows=rows, total=len(rows))
 

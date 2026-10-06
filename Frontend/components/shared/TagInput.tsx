@@ -17,7 +17,13 @@ function normalizeTag(tag: string): string {
   return tag.trim();
 }
 
-export function TagInput({ className, disabled = false, onChange, placeholder = "Add tag", value }: TagInputProps) {
+export function TagInput({
+  className,
+  disabled = false,
+  onChange,
+  placeholder = "Add tag",
+  value,
+}: TagInputProps) {
   const [draft, setDraft] = useState("");
 
   function addTag(rawTag: string) {
@@ -43,10 +49,13 @@ export function TagInput({ className, disabled = false, onChange, placeholder = 
       )}
     >
       {value.map((tag) => (
-        <span className="inline-flex items-center gap-1 rounded-full bg-[#EFF6FF] px-2 py-1 text-xs font-medium text-[#2563EB]" key={tag}>
+        <span
+          className="inline-flex items-center gap-1 rounded-full bg-[var(--background)] px-2 py-1 text-xs font-medium text-[var(--primary)]"
+          key={tag}
+        >
           {tag}
           <button
-            className="rounded-full text-[#2563EB] hover:bg-blue-100"
+            className="rounded-full text-[var(--primary)] hover:bg-blue-100"
             disabled={disabled}
             onClick={() => removeTag(tag)}
             type="button"

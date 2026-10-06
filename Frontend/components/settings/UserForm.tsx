@@ -3,15 +3,21 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Save } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { api } from "@/lib/api";
+import { api, apiErrorDetail } from "@/lib/api";
 import { CRM_ROLES, type CrmRole } from "@/lib/auth-types";
 import type { User, UserCreate, UserUpdate } from "@/types/api";
 
@@ -47,12 +53,22 @@ function valuesFromUser(user?: User | null): UserFormValues {
   };
 }
 
-function fieldError(message?: string) {
-  return message ? <p className="mt-1 text-xs text-red-600">{message}</p> : null;
+function fieldError(message?: string, field?: string) {
+  return message ? (
+    <p
+      id={field ? `${field}-error` : undefined}
+      role="alert"
+      className="mt-1 text-xs text-red-600"
+    >
+      {message}
+    </p>
+  ) : null;
 }
 
 export function UserForm({ onOpenChange, onSaved, open, user }: UserFormProps) {
   const queryClient = useQueryClient();
+  const [inviteUrl, setInviteUrl] = useState("");
+  const [created, setCreated] = useState<User | null>(null);
   const form = useForm<UserFormValues>({
     defaultValues: valuesFromUser(user),
     resolver: zodResolver(userFormSchema),
@@ -60,12 +76,15 @@ export function UserForm({ onOpenChange, onSaved, open, user }: UserFormProps) {
 
   useEffect(() => {
     if (open) {
+      setInviteUrl("");
+      setCreated(null);
       form.reset(valuesFromUser(user));
     }
   }, [form, open, user]);
 
   const saveUser = useMutation({
     mutationFn: (values: UserFormValues) => {
+      if (created && !user) return Promise.resolve(created);
       if (user) {
         return api.patch<User, UserUpdate>(`/users/${user.id}`, {
           full_name: values.full_name,
@@ -81,10 +100,27 @@ export function UserForm({ onOpenChange, onSaved, open, user }: UserFormProps) {
         role: values.role,
       });
     },
-    onSuccess: (savedUser) => {
+    onSuccess: async (savedUser) => {
       void queryClient.invalidateQueries({ queryKey: ["users"] });
       onSaved?.(savedUser);
-      onOpenChange(false);
+      if (!user) {
+        setCreated(savedUser);
+        const response = await fetch("/api/team/invite", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: savedUser.email }),
+        });
+        const body = await response.json();
+        if (response.ok) setInviteUrl(body.url);
+        else {
+          setInviteUrl("");
+          form.setError("root", {
+            message:
+              body.detail ||
+              "User created, but invitation failed. Use Create invitation from the user list to retry.",
+          });
+        }
+      } else onOpenChange(false);
     },
   });
 
@@ -95,63 +131,143 @@ export function UserForm({ onOpenChange, onSaved, open, user }: UserFormProps) {
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{user ? "Edit User" : "Invite User"}</DialogTitle>
-          <DialogDescription>{user ? "Update role and account status." : "Create a backend user metadata record."}</DialogDescription>
+          <DialogDescription>
+            {user
+              ? "Update role and account status."
+              : "Create an account and a secure invitation link valid for 48 hours."}
+          </DialogDescription>
         </DialogHeader>
-        <form className="grid gap-5" onSubmit={form.handleSubmit((values) => saveUser.mutate(values))}>
-          {!user ? (
+        {inviteUrl ? (
+          <div className="grid gap-3">
+            <p role="status">
+              Account created. Share this private invitation link with the
+              recipient. No email has been sent. The link expires in 48 hours
+              and can be used once.
+            </p>
+            <Input
+              aria-label="Invitation link"
+              value={inviteUrl}
+              readOnly
+              onFocus={(e) => e.target.select()}
+            />
+            <Button onClick={() => navigator.clipboard.writeText(inviteUrl)}>
+              Copy invitation link
+            </Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Done
+            </Button>
+          </div>
+        ) : (
+          <form
+            className="grid gap-5"
+            onSubmit={form.handleSubmit((values) => saveUser.mutate(values))}
+          >
+            {!user ? (
+              <div>
+                <Label htmlFor="user_email">Email</Label>
+                <Input
+                  id="user_email"
+                  disabled={submitting}
+                  type="email"
+                  aria-invalid={Boolean(form.formState.errors.email)}
+                  aria-describedby={
+                    form.formState.errors.email ? "email-error" : undefined
+                  }
+                  {...form.register("email")}
+                />
+                {fieldError(form.formState.errors.email?.message, "email")}
+              </div>
+            ) : null}
+
             <div>
-              <Label htmlFor="user_email">Email</Label>
-              <Input id="user_email" disabled={submitting} type="email" {...form.register("email")} />
-              {fieldError(form.formState.errors.email?.message)}
-            </div>
-          ) : null}
-
-          <div>
-            <Label htmlFor="user_full_name">Full Name</Label>
-            <Input id="user_full_name" disabled={submitting} {...form.register("full_name")} />
-            {fieldError(form.formState.errors.full_name?.message)}
-          </div>
-
-          <div>
-            <Label htmlFor="user_role">Role</Label>
-            <select
-              className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
-              disabled={submitting}
-              id="user_role"
-              {...form.register("role")}
-            >
-              {CRM_ROLES.map((role) => (
-                <option key={role} value={role}>
-                  {humanRole(role)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {user ? (
-            <label className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 text-sm text-[#0F2444]">
-              <input
-                className="h-4 w-4 rounded border-slate-300 text-[#2563EB]"
+              <Label htmlFor="user_full_name">Full Name</Label>
+              <Input
+                id="user_full_name"
                 disabled={submitting}
-                type="checkbox"
-                {...form.register("is_active")}
+                aria-invalid={Boolean(form.formState.errors.full_name)}
+                aria-describedby={
+                  form.formState.errors.full_name
+                    ? "full_name-error"
+                    : undefined
+                }
+                {...form.register("full_name")}
               />
-              Active user
-            </label>
-          ) : null}
+              {fieldError(
+                form.formState.errors.full_name?.message,
+                "full_name",
+              )}
+            </div>
 
-          {saveUser.isError ? <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">Could not save user.</div> : null}
+            <div>
+              <Label htmlFor="user_role">Role</Label>
+              <select
+                className="h-10 w-full rounded-md border border-[var(--input)] bg-white px-3 text-sm text-slate-950"
+                disabled={submitting}
+                id="user_role"
+                aria-invalid={Boolean(form.formState.errors.role)}
+                aria-describedby={
+                  form.formState.errors.role ? "role-error" : undefined
+                }
+                {...form.register("role")}
+              >
+                {CRM_ROLES.map((role) => (
+                  <option key={role} value={role}>
+                    {humanRole(role)}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div className="grid gap-3 sm:flex sm:justify-end">
-            <Button className="w-full sm:w-auto" disabled={submitting} onClick={() => onOpenChange(false)} type="button" variant="outline">
-              Cancel
-            </Button>
-            <Button className="w-full sm:w-auto" disabled={submitting} type="submit">
-              <Save className="h-4 w-4" aria-hidden="true" />
-              Save User
-            </Button>
-          </div>
-        </form>
+            {user ? (
+              <label className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 text-sm text-[var(--navy)]">
+                <input
+                  className="h-4 w-4 rounded border-slate-300 text-[var(--primary)]"
+                  disabled={submitting}
+                  type="checkbox"
+                  aria-invalid={Boolean(form.formState.errors.is_active)}
+                  aria-describedby={
+                    form.formState.errors.is_active
+                      ? "is_active-error"
+                      : undefined
+                  }
+                  {...form.register("is_active")}
+                />
+                Active user
+              </label>
+            ) : null}
+
+            {form.formState.errors.root && (
+              <p role="alert" className="text-red-700">
+                {form.formState.errors.root.message}
+              </p>
+            )}
+            {saveUser.isError ? (
+              <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+                {apiErrorDetail(saveUser.error, "Could not save user.")}
+              </div>
+            ) : null}
+
+            <div className="grid gap-3 sm:flex sm:justify-end">
+              <Button
+                className="w-full sm:w-auto"
+                disabled={submitting}
+                onClick={() => onOpenChange(false)}
+                type="button"
+                variant="outline"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="w-full sm:w-auto"
+                disabled={submitting}
+                type="submit"
+              >
+                <Save className="h-4 w-4" aria-hidden="true" />
+                Save User
+              </Button>
+            </div>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -74,6 +74,7 @@ class Account(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 
 class Contact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    email_opted_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     __tablename__ = "contacts"
 
     first_name: Mapped[str] = mapped_column(String(120), nullable=False)

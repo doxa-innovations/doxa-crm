@@ -122,6 +122,26 @@ async def receive_mailersend_activity(
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload") from exc
 
+    if raw_payload.get("type") in {"activity.hard_bounced", "activity.spam_complaint", "activity.unsubscribed", "activity.suppressed"}:
+        from app.utils.mailersend_webhook import _ids_from_tags
+        from app.models import Contact, CampaignEnrollment, CampaignEnrollmentStatus
+        from sqlalchemy import select
+        from datetime import datetime, timezone
+        data = raw_payload.get("data") or {}
+        email_data = data.get("email") if isinstance(data.get("email"), dict) else {}
+        _, contact_id, _ = _ids_from_tags(email_data.get("tags") or data.get("tags") or [])
+        if contact_id:
+            result = await db.execute(select(Contact).where(Contact.id == contact_id))
+            contact = result.scalar_one_or_none()
+            if contact:
+                contact.email_opted_out_at = datetime.now(timezone.utc)
+                result = await db.execute(select(CampaignEnrollment).where(CampaignEnrollment.contact_id == contact_id))
+                for enrollment in result.scalars().all():
+                    enrollment.status = CampaignEnrollmentStatus.unsubscribed
+                await db.commit()
+                await webhooks_service.log_inbound_webhook(db, event_type=raw_payload["type"], status="suppressed", payload=_safe_payload(raw_payload), signature=signature)
+                return WebhookAck()
+
     event = parse_campaign_email_event(raw_payload)
     if event is None:
         # Unhandled event type or a message without our campaign tags: ack so

@@ -7,10 +7,21 @@ interface LoadingSpinnerProps {
   className?: string;
 }
 
-export function LoadingSpinner({ className, label = "Loading" }: LoadingSpinnerProps) {
+export function LoadingSpinner({
+  className,
+  label = "Loading",
+}: LoadingSpinnerProps) {
   return (
-    <div className={cn("flex min-h-48 flex-col items-center justify-center gap-3 text-[#64748B]", className)}>
-      <LoaderCircle className="h-6 w-6 animate-spin text-[#2563EB]" aria-hidden="true" />
+    <div
+      className={cn(
+        "flex min-h-48 flex-col items-center justify-center gap-3 text-[var(--muted-foreground)]",
+        className,
+      )}
+    >
+      <LoaderCircle
+        className="h-6 w-6 animate-spin text-[var(--primary)]"
+        aria-hidden="true"
+      />
       <span className="text-sm font-medium">{label}</span>
     </div>
   );

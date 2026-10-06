@@ -1,7 +1,14 @@
 "use client";
+import { ReportingCurrency } from "@/components/reports/ReportingCurrency";
 
-import { Activity, BarChart3, Handshake, SlidersHorizontal, TrendingUp } from "lucide-react";
-import { useState } from "react";
+import {
+  Activity,
+  BarChart3,
+  Handshake,
+  SlidersHorizontal,
+  TrendingUp,
+} from "lucide-react";
+import { useState, useEffect } from "react";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ActivityTab } from "@/components/reports/ActivityTab";
@@ -23,10 +30,18 @@ const tabs = [
 
 export function ReportsPageClient() {
   const [activeTab, setActiveTab] = useState<ReportTab>("sales");
+  useEffect(() => {
+    if (new URLSearchParams(location.search).has("reports-view"))
+      setActiveTab("custom");
+  }, []);
 
   return (
     <div className="grid gap-6">
-      <PageHeader subtitle="Analyze pipeline, lead, activity, and customer performance." title="Reports" />
+      <PageHeader
+        subtitle="Analyze pipeline, lead, activity, and customer performance. "
+        title="Reports"
+      />
+      <ReportingCurrency />
 
       <section className="rounded-lg border border-slate-200/70 bg-white p-1.5 shadow-sm">
         <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-5">
@@ -38,7 +53,9 @@ export function ReportsPageClient() {
               <button
                 className={cn(
                   "inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium transition-colors",
-                  active ? "bg-[#0F2444] text-white shadow-sm" : "text-[#64748B] hover:bg-slate-50 hover:text-[#0F2444]",
+                  active
+                    ? "bg-[var(--navy)] text-white shadow-sm"
+                    : "text-[var(--muted-foreground)] hover:bg-slate-50 hover:text-[var(--navy)]",
                 )}
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}

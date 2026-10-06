@@ -37,6 +37,7 @@ async def list_campaigns(
     type_filter: CampaignType | None = Query(default=None, alias="type"),
     status_filter: CampaignStatus | None = Query(default=None, alias="status"),
     owner_id: UUID | None = None,
+    search: str | None = Query(default=None, max_length=255),
 ) -> list[CampaignResponse]:
     return await campaigns_service.list_campaigns(
         db,
@@ -45,6 +46,7 @@ async def list_campaigns(
         type_filter=type_filter,
         status_filter=status_filter,
         owner_id=owner_id,
+        search=search,
     )
 
 
@@ -212,3 +214,40 @@ async def delete_step(
 ) -> Response:
     await campaigns_service.delete_step(db, campaign_id, step_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+from fastapi import HTTPException
+from pydantic import BaseModel
+class UnsubscribeRequest(BaseModel):
+    token: str
+
+public_router = APIRouter(prefix="/email-preferences", tags=["Email preferences"])
+@public_router.post("/unsubscribe")
+async def unsubscribe_email(payload: UnsubscribeRequest, db: Annotated[AsyncSession, Depends(get_db)]):
+    from datetime import datetime, timezone
+    from sqlalchemy import select
+    from app.models import Contact, CampaignEnrollment, CampaignEnrollmentStatus
+    from app.services.email_preferences import read_unsubscribe_token
+    contact_id = read_unsubscribe_token(payload.token)
+    if contact_id is None:
+        raise HTTPException(status_code=400, detail="Invalid unsubscribe link")
+    result = await db.execute(select(Contact).where(Contact.id == contact_id))
+    contact = result.scalar_one_or_none()
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    contact.email_opted_out_at = datetime.now(timezone.utc)
+    result = await db.execute(select(CampaignEnrollment).where(CampaignEnrollment.contact_id == contact_id))
+    for enrollment in result.scalars().all():
+        enrollment.status = CampaignEnrollmentStatus.unsubscribed
+    await db.commit()
+    return {"unsubscribed": True}
+
+
+@router.get("/{campaign_id}/delivery-history")
+async def delivery_history(campaign_id: UUID, db: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_user)], page: int = Query(1, ge=1)):
+    from sqlalchemy import select, cast, String
+    from app.models import TaskLog, CampaignEnrollment
+    await campaigns_service.get_campaign_model(db, campaign_id)
+    rows = await db.execute(select(TaskLog).join(CampaignEnrollment, TaskLog.details["enrollment_id"].astext == cast(CampaignEnrollment.id, String)).where(CampaignEnrollment.campaign_id == campaign_id).order_by(TaskLog.started_at.desc(), TaskLog.id).offset((page-1)*50).limit(50))
+    # Provider exception text may contain URLs or credentials; expose an actionable generic error.
+    return [{"id": row.id, "status": row.status, "created_at": row.started_at, "enrollment_id": row.details.get("enrollment_id"), "result": row.details.get("result", {}), "error": "Delivery failed. Check provider configuration and worker logs; automatic retries may still be pending." if row.error else None} for row in rows.scalars().all()]

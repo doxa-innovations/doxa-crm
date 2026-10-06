@@ -102,9 +102,12 @@ async def list_campaigns(
     type_filter: CampaignType | None = None,
     status_filter: CampaignStatus | None = None,
     owner_id: UUID | None = None,
+    search: str | None = None,
 ) -> list[CampaignResponse]:
     offset, limit = _pagination(page, page_size)
     query = select(Campaign)
+    if search:
+        query = query.where(Campaign.name.ilike(f"%{search}%"))
 
     if type_filter:
         query = query.where(Campaign.type == type_filter)
@@ -113,7 +116,7 @@ async def list_campaigns(
     if owner_id:
         query = query.where(Campaign.owner_id == owner_id)
 
-    result = await db.execute(query.order_by(Campaign.created_at.desc()).offset(offset).limit(limit))
+    result = await db.execute(query.order_by(Campaign.created_at.desc(), Campaign.id).offset(offset).limit(limit))
     return [await build_campaign_response(db, campaign) for campaign in result.scalars().all()]
 
 
@@ -135,6 +138,8 @@ async def create_campaign(
     current_user: User,
 ) -> CampaignResponse:
     data = campaign_in.model_dump()
+    if campaign_in.end_date < campaign_in.start_date:
+        raise HTTPException(422, "End date must follow start date")
     data["owner_id"] = data.get("owner_id") or current_user.id
     campaign = Campaign(**data)
     db.add(campaign)
@@ -149,6 +154,10 @@ async def update_campaign(
     campaign_in: CampaignUpdate,
 ) -> CampaignResponse:
     campaign = await get_campaign_model(db, campaign_id)
+    start = campaign_in.start_date or campaign.start_date
+    end = campaign_in.end_date or campaign.end_date
+    if end < start:
+        raise HTTPException(422, "End date must follow start date")
     for field_name, value in campaign_in.model_dump(exclude_unset=True).items():
         setattr(campaign, field_name, value)
     await db.commit()

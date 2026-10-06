@@ -91,9 +91,13 @@ def build_document_response(document: ProjectDocument) -> ProjectDocumentRespons
     storage_key = document.storage_key or document.file_url
     filename = document.filename or document.name
     mime_type = document.mime_type or document.content_type
-    download_url = storage.generate_presigned_download_url(storage_key) if storage_key else document.file_url
+    try:
+        download_url = storage.generate_presigned_download_url(storage_key) if storage_key else document.file_url
+    except HTTPException:
+        download_url = ""  # Keep metadata available; never fabricate a working download.
 
     return ProjectDocumentResponse(
+        customer_visible=document.customer_visible or False,
         id=document.id,
         project_id=document.project_id,
         filename=filename,
@@ -126,6 +130,8 @@ async def build_project_response(db: AsyncSession, project: Project) -> ProjectR
         health=project.health,
         owner_id=project.owner_id,
         owner_name=owner_name,
+        portal_enabled=project.portal_enabled if project.portal_enabled is not None else True,
+        portal_expires_at=project.portal_expires_at,
         portal_token=project.portal_token,
         is_active=project.is_active,
         milestones=milestones,
@@ -154,7 +160,7 @@ async def list_projects(
     if account_id:
         query = query.where(Project.account_id == account_id)
 
-    result = await db.execute(query.order_by(Project.created_at.desc()).offset(offset).limit(limit))
+    result = await db.execute(query.order_by(Project.created_at.desc(), Project.id).offset(offset).limit(limit))
     return [await build_project_response(db, project) for project in result.scalars().all()]
 
 
@@ -381,6 +387,8 @@ async def get_portal_project(db: AsyncSession, portal_token: UUID | str) -> Proj
     result = await db.execute(
         select(Project).where(
             Project.portal_token == str(portal_token),
+            Project.portal_enabled.is_(True),
+            (Project.portal_expires_at.is_(None) | (Project.portal_expires_at > datetime.now(timezone.utc))),
             Project.is_active.is_(True),
         )
     )
@@ -389,16 +397,22 @@ async def get_portal_project(db: AsyncSession, portal_token: UUID | str) -> Proj
         raise _not_found("Project")
 
     account_name = await _scalar_name(db, select(Account.name).where(Account.id == project.account_id))
+    milestone_models = await _list_milestones(db, project.id)
     milestones = [
         PortalMilestoneResponse(
             title=milestone.title,
             due_date=milestone.due_date,
             completed=milestone.completed_at is not None,
         )
-        for milestone in await _list_milestones(db, project.id)
+        for milestone in milestone_models
     ]
 
+    docs = await _list_document_models(db, project.id)
+    import os
     return ProjectPortalResponse(
+        support_email=os.environ.get("CUSTOMER_SUPPORT_EMAIL") or None,
+        updated_at=max([project.updated_at] + [m.updated_at for m in milestone_models] + [d.updated_at for d in docs if d.customer_visible]),
+        documents=[{"filename": d.filename, "download_url": storage.generate_presigned_download_url(d.storage_key)} for d in docs if d.customer_visible],
         project_name=project.name,
         account_name=account_name,
         health=project.health,

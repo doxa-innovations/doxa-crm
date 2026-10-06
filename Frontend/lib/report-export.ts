@@ -18,10 +18,23 @@ function appendParam(url: URL, key: string, value: ExportParamValue): void {
   url.searchParams.set(key, String(value));
 }
 
-function exportUrl(format: ExportFormat, report: string, params: ExportParams): string {
-  const url = new URL(`${API_BASE_URL.replace(/\/+$/, "")}/reports/export/${format}`, window.location.origin);
+function exportUrl(
+  format: ExportFormat,
+  report: string,
+  params: ExportParams,
+): string {
+  const url = new URL(
+    `${API_BASE_URL.replace(/\/+$/, "")}/reports/export/${format}`,
+    window.location.origin,
+  );
   url.searchParams.set("report", report);
-  Object.entries(params).forEach(([key, value]) => appendParam(url, key, value));
+  url.searchParams.set(
+    "currency",
+    localStorage.getItem("doxa:report-currency") || "USD",
+  );
+  Object.entries(params).forEach(([key, value]) =>
+    appendParam(url, key, value),
+  );
   return url.toString();
 }
 
@@ -38,7 +51,10 @@ async function resolveToken(): Promise<string | null> {
   }
 }
 
-function filenameFromDisposition(disposition: string | null, fallback: string): string {
+function filenameFromDisposition(
+  disposition: string | null,
+  fallback: string,
+): string {
   if (!disposition) {
     return fallback;
   }
@@ -58,39 +74,60 @@ async function authHeaders(): Promise<Headers> {
   return headers;
 }
 
-async function downloadResponse(response: Response, fallbackFilename: string): Promise<void> {
+async function downloadResponse(
+  response: Response,
+  fallbackFilename: string,
+): Promise<void> {
   if (!response.ok) {
-    throw new Error("Could not export report.");
+    const payload = await response.json().catch(() => null);
+    throw new Error(
+      payload?.detail || "Could not export report. Please retry.",
+    );
   }
 
   const blob = await response.blob();
   const objectUrl = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = objectUrl;
-  link.download = filenameFromDisposition(response.headers.get("content-disposition"), fallbackFilename);
+  link.download = filenameFromDisposition(
+    response.headers.get("content-disposition"),
+    fallbackFilename,
+  );
   document.body.appendChild(link);
   link.click();
   link.remove();
   window.URL.revokeObjectURL(objectUrl);
 }
 
-export async function downloadReport(format: ExportFormat, report: string, params: ExportParams = {}): Promise<void> {
+export async function downloadReport(
+  format: ExportFormat,
+  report: string,
+  params: ExportParams = {},
+): Promise<void> {
   const headers = await authHeaders();
   const response = await fetch(exportUrl(format, report, params), { headers });
 
   await downloadResponse(response, `${report}.${format}`);
 }
 
-export async function downloadCustomReportXlsx(request: CustomReportRequest): Promise<void> {
+export async function downloadCustomReportXlsx(
+  request: CustomReportRequest,
+): Promise<void> {
   const headers = await authHeaders();
-  headers.set("Accept", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  headers.set(
+    "Accept",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
   headers.set("Content-Type", "application/json");
 
-  const response = await fetch(`${API_BASE_URL.replace(/\/+$/, "")}/reports/custom/export/xlsx`, {
-    body: JSON.stringify(request),
-    headers,
-    method: "POST",
-  });
+  const response = await fetch(
+    `${API_BASE_URL.replace(/\/+$/, "")}/reports/custom/export/xlsx?currency=${localStorage.getItem("doxa:report-currency") || "USD"}`,
+    {
+      body: JSON.stringify(request),
+      headers,
+      method: "POST",
+    },
+  );
 
   await downloadResponse(response, `${request.entity}-custom-report.xlsx`);
 }

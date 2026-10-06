@@ -12,6 +12,16 @@ from app.models import User
 from app.schemas.users import UserCreate, UserResponse, UserUpdate
 from app.services import users as users_service
 
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
+
+class DirectoryUser(BaseModel):
+    id: UUID
+    full_name: str
+    role: str
+    is_active: bool
+    model_config = ConfigDict(from_attributes=True)
+
 router = APIRouter(prefix="/users", tags=["Users"])
 
 
@@ -40,6 +50,12 @@ async def get_me(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> User:
     return current_user
+
+
+@router.get("/directory", response_model=list[DirectoryUser])
+async def directory(db: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_user)]):
+    result = await db.execute(select(User).where(User.is_active.is_(True)).order_by(User.full_name))
+    return result.scalars().all()
 
 
 @router.get("/{user_id}", response_model=UserResponse)

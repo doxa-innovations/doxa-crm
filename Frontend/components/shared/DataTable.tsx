@@ -27,10 +27,15 @@ interface DataTableProps<TData> {
   getRowClassName?: (row: TData) => string | undefined;
   getRowKey: (row: TData) => string;
   isLoading?: boolean;
+  error?: boolean;
+  onRetry?: () => unknown;
   pagination?: DataTablePagination;
 }
 
-function renderCell<TData>(column: DataTableColumn<TData>, row: TData): React.ReactNode {
+function renderCell<TData>(
+  column: DataTableColumn<TData>,
+  row: TData,
+): React.ReactNode {
   if (column.cell) {
     return column.cell(row);
   }
@@ -47,8 +52,12 @@ function renderCell<TData>(column: DataTableColumn<TData>, row: TData): React.Re
   return "";
 }
 
-function paginationLabel(pagination: DataTablePagination, currentCount: number): string {
-  const start = currentCount === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
+function paginationLabel(
+  pagination: DataTablePagination,
+  currentCount: number,
+): string {
+  const start =
+    currentCount === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
   const end = (pagination.page - 1) * pagination.pageSize + currentCount;
 
   if (pagination.total !== undefined) {
@@ -66,15 +75,38 @@ export function DataTable<TData>({
   getRowKey,
   isLoading = false,
   pagination,
+  error,
+  onRetry,
 }: DataTableProps<TData>) {
-  const loadingRows = Array.from({ length: pagination?.pageSize ? Math.min(pagination.pageSize, 8) : 8 }, (_, index) => index);
+  if (error)
+    return (
+      <div
+        role="alert"
+        className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-800"
+      >
+        Records could not be loaded.{" "}
+        {onRetry && (
+          <Button variant="outline" onClick={() => onRetry()}>
+            Retry
+          </Button>
+        )}
+      </div>
+    );
+  const loadingRows = Array.from(
+    { length: pagination?.pageSize ? Math.min(pagination.pageSize, 8) : 8 },
+    (_, index) => index,
+  );
   const hasNextPage =
-    pagination?.hasNextPage ?? (pagination?.total !== undefined ? pagination.page * pagination.pageSize < pagination.total : false);
+    pagination?.hasNextPage ??
+    (pagination?.total !== undefined
+      ? pagination.page * pagination.pageSize < pagination.total
+      : false);
   const hasMultiplePages = Boolean(
     pagination &&
-      (pagination.page > 1 ||
-        hasNextPage ||
-        (pagination.total !== undefined && pagination.total > pagination.pageSize)),
+    (pagination.page > 1 ||
+      hasNextPage ||
+      (pagination.total !== undefined &&
+        pagination.total > pagination.pageSize)),
   );
 
   return (
@@ -86,7 +118,7 @@ export function DataTable<TData>({
               {columns.map((column) => (
                 <th
                   className={cn(
-                    "px-4 py-3 text-left text-xs font-semibold uppercase tracking-normal text-[#64748B]",
+                    "px-4 py-3 text-left text-xs font-semibold uppercase tracking-normal text-[var(--muted-foreground)]",
                     column.className,
                   )}
                   key={column.id}
@@ -112,7 +144,10 @@ export function DataTable<TData>({
 
             {!isLoading && data.length === 0 ? (
               <tr>
-                <td className="px-4 py-10 text-center text-sm text-[#64748B]" colSpan={columns.length}>
+                <td
+                  className="px-4 py-10 text-center text-sm text-[var(--muted-foreground)]"
+                  colSpan={columns.length}
+                >
                   {emptyMessage}
                 </td>
               </tr>
@@ -120,9 +155,21 @@ export function DataTable<TData>({
 
             {!isLoading
               ? data.map((row) => (
-                  <tr className={cn("transition-colors hover:bg-[#EFF6FF]/70", getRowClassName?.(row))} key={getRowKey(row)}>
+                  <tr
+                    className={cn(
+                      "transition-colors hover:bg-[var(--background)]/70",
+                      getRowClassName?.(row),
+                    )}
+                    key={getRowKey(row)}
+                  >
                     {columns.map((column) => (
-                      <td className={cn("px-4 py-4 text-sm text-slate-700", column.className)} key={column.id}>
+                      <td
+                        className={cn(
+                          "px-4 py-4 text-sm text-slate-700",
+                          column.className,
+                        )}
+                        key={column.id}
+                      >
                         {renderCell(column, row)}
                       </td>
                     ))}
@@ -135,11 +182,15 @@ export function DataTable<TData>({
 
       {pagination && hasMultiplePages ? (
         <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3">
-          <p className="text-sm text-[#64748B]">{paginationLabel(pagination, data.length)}</p>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            {paginationLabel(pagination, data.length)}
+          </p>
           <div className="flex items-center gap-2">
             <Button
               disabled={pagination.page <= 1 || isLoading}
-              onClick={() => pagination.onPageChange(Math.max(1, pagination.page - 1))}
+              onClick={() =>
+                pagination.onPageChange(Math.max(1, pagination.page - 1))
+              }
               size="sm"
               type="button"
               variant="outline"
