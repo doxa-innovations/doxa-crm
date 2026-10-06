@@ -1,6 +1,6 @@
 "use client";
 
-import { captureException } from "doxa-watch/next/client";
+import { captureException } from "@doxa-innovations/watch/next/client";
 import * as React from "react";
 
 // Replaces the root layout when it fails itself, so it renders its own <html> and <body> and uses no

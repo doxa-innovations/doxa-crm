@@ -18,7 +18,7 @@
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "date-fns": "4.4.0",
-    "doxa-watch": "^0.1.0",
+    "@doxa-innovations/watch": "^0.1.0",
     "jose": "6.2.3",
     "lucide-react": "1.20.0",
     "next": "15.5.19",

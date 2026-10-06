@@ -1,4 +1,4 @@
-import { withDoxaWatch } from "doxa-watch/next";
+import { withDoxaWatch } from "@doxa-innovations/watch/next";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
