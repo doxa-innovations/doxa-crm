@@ -11,16 +11,19 @@ origin; builds require no environment secrets or public URL build arguments.
 - Push to `stage`: backend tests, frontend typecheck, then sequential backend and
   frontend `staging-<source SHA>` image builds. There is no staging Kubernetes
   environment, database, secret folder or domain for CRM.
-- Merge `stage` into `production` with a merge commit (no squash/rebase): verify
-  that the stage head is an ancestor of production and that its Stage build check
-  succeeded. The shared organization workflow also requires each matching
-  staging image with the correct source revision labels.
+- Merge `stage` into `main` with a merge commit (no squash/rebase): `main` is what
+  production runs. The workflow verifies that the stage head is an ancestor of
+  main and that its Stage build check succeeded, then builds `prod-<stage SHA>`.
+  The shared organization workflow also requires each matching staging image
+  with the correct source revision labels, so nothing reaches production without
+  having been built on `stage` first.
 - Production builds frontend first and backend last. The platform Image Updater
   tracks only the backend tag, updating `crm.imageTag`; frontend, API, worker,
   scheduler and migrations all use that same tag. This prevents deployment before
   both production images exist.
-- Manual production retries require a successful stage SHA already merged into
-  production. Direct pushes to production do not bypass promotion checks.
+- Manual production retries (`workflow_dispatch`) require a successful stage SHA
+  already on main. Commits that reach main without going through `stage` have no
+  staging image and cannot be built for production.
 
 The two image builds must stay sequential: the organization build workflow's
 concurrency group is repository/environment-wide and would cancel parallel jobs.
@@ -84,7 +87,7 @@ Email/SMS delivery and R2 uploads need their optional provider settings added to
 ## First deployment
 
 1. Populate and validate `prod:/crm`, and register the Google redirect URI.
-2. Run the `stage` image checks and merge the tested source to `production`.
+2. Run the `stage` image checks and merge `stage` into `main`.
 3. Enable `crm` in platform production values with the resulting `prod-<SHA>`.
    Add `crm=ghcr.io/doxa-innovations/doxa-crm-backend` to the stack's updater image
    list; its image-tag target is `crm.imageTag`.

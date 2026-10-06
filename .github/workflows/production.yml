@@ -1,12 +1,14 @@
-name: Promote stage to production
+name: Production image
+# `main` is what production runs. It is reached by merging `stage` into it (a merge commit, no squash), and the
+# production image is built from the merged stage head, whose staging image already exists for that exact SHA.
 on:
   pull_request:
-    branches: [production]
+    branches: [main]
     types: [closed]
   workflow_dispatch:
     inputs:
       source_sha:
-        description: Full SHA from a successful Stage build check, merged into production
+        description: Full SHA from a successful Stage build check, already on main
         required: true
         type: string
 permissions:
@@ -26,7 +28,7 @@ jobs:
       sha: ${{ steps.check.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
-        with: {fetch-depth: 0, ref: production}
+        with: {fetch-depth: 0, ref: main}
       - id: check
         env:
           SOURCE_SHA: ${{ inputs.source_sha || github.event.pull_request.head.sha }}
@@ -34,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          git merge-base --is-ancestor "$SOURCE_SHA" origin/production
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
           gh api "repos/$GITHUB_REPOSITORY/actions/workflows/staging.yml/runs?head_sha=$SOURCE_SHA&status=success" --jq '.workflow_runs | any(.head_branch == "stage")' | grep -qx true
           echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
   frontend:
